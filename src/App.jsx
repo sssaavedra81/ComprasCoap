@@ -289,6 +289,13 @@ function GlobalStyle() {
       }
       .coap-info-banner svg { flex-shrink: 0; margin-top: 2px; color: var(--accent-dark); }
 
+      .coap-warn-banner {
+        display: flex; align-items: flex-start; gap: 10px;
+        background: #FBEAE4; border: 1px solid var(--danger); border-radius: 10px;
+        padding: 12px 14px; margin-bottom: 14px; font-size: 13.5px; color: var(--danger-dark);
+      }
+      .coap-warn-banner svg { flex-shrink: 0; margin-top: 2px; color: var(--danger); }
+
       /* faixa de estatísticas */
       .coap-stats { display: flex; border: 1px solid var(--border); background: var(--surface); margin-bottom: 22px; flex-wrap: wrap; border-radius: 12px; overflow: hidden; }
       .coap-stat { flex: 1; min-width: 120px; padding: 14px 16px; border-right: 1px solid var(--border); }
@@ -535,10 +542,12 @@ function FormCompra({ onCancel, onSubmit }) {
 
   const alvo = proximaQuartaValida();
   const alvoISO = toISODate(alvo);
+  const prazoImpossivel = dataLimite !== '' && dataLimite < alvoISO;
+  const podeEnviar = material && quantidade && atividadeProjeto && dataLimite && !prazoImpossivel;
 
   function submit(e) {
     e.preventDefault();
-    if (!material || !quantidade || !atividadeProjeto || !dataLimite) return;
+    if (!podeEnviar) return;
     onSubmit({
       tipo: 'compra', material, quantidade: Number(quantidade), atividadeProjeto,
       link, dataLimite, observacoesSolicitante, quartaAlvo: alvoISO,
@@ -577,11 +586,21 @@ function FormCompra({ onCancel, onSubmit }) {
           <label>Data limite — quando precisa ter o material em mãos</label>
           <input type="date" value={dataLimite} onChange={e => setDataLimite(e.target.value)} required />
         </div>
+        {prazoImpossivel && (
+          <div className="coap-warn-banner">
+            <X size={16} />
+            <span>
+              Não é possível registrar com essa data: <strong>{formatDateBR(dataLimite)}</strong> é anterior à próxima compra do ciclo normal
+              (<strong>quarta-feira, {formatDateLongBR(alvo)}</strong>). Escolha {formatDateBR(alvoISO)} ou uma data posterior.
+              Para uma emergência real que não pode esperar, fale diretamente com a administração.
+            </span>
+          </div>
+        )}
         <div className="coap-field">
           <label>Observações (opcional)</label>
           <textarea value={observacoesSolicitante} onChange={e => setObservacoesSolicitante(e.target.value)} />
         </div>
-        <button className="coap-btn accent" type="submit"><Check size={15} /> Enviar solicitação</button>
+        <button className="coap-btn accent" type="submit" disabled={!podeEnviar}><Check size={15} /> Enviar solicitação</button>
       </form>
     </div>
   );
@@ -713,6 +732,7 @@ function RequesterView({ session, requests, config, onLogout, onRefresh, onAdd, 
                   {(r.status === 'pendente' || r.status === 'aprovada') && r.quartaAlvo && (
                     <div className="coap-req-alvo">Compra prevista: quarta-feira, {formatDateLongBR(r.quartaAlvo)}</div>
                   )}
+                  {r.motivoUrgencia && <div className="coap-obs">Motivo da urgência: {r.motivoUrgencia}</div>}
                   {r.link && <a className="coap-link" href={r.link} target="_blank" rel="noreferrer"><ExternalLink size={11} /> link de compra</a>}
                   {r.observacaoAdmin && <div className="coap-obs">Observação da administração: {r.observacaoAdmin}</div>}
                 </div>
@@ -825,7 +845,7 @@ function PainelListaDeCompras({ titulo, subtitulo, itens, destaque, onPurchase }
 
 /* ---------- tabela de solicitações (admin / diretor) ---------- */
 
-function TabelaCompras({ items, somenteLeitura, onApprove, onReject, onPurchase, onDeliver }) {
+function TabelaCompras({ items, somenteLeitura, onApprove, onReject, onPurchase, onDeliver, onDelete }) {
   const [rejeitando, setRejeitando] = useState(null);
   const [obs, setObs] = useState('');
 
@@ -850,7 +870,7 @@ function TabelaCompras({ items, somenteLeitura, onApprove, onReject, onPurchase,
                 <td data-label="Qtd.">{r.quantidade}</td>
                 <td data-label="Atividade">{r.atividadeProjeto}</td>
                 <td data-label="Data limite">{formatDateBR(r.dataLimite)}</td>
-                <td data-label="Prioridade"><PrioridadeBadge dataLimite={r.dataLimite} /></td>
+                <td data-label="Prioridade"><PrioridadeBadge dataLimite={r.dataLimite} />{r.motivoUrgencia && <div className="coap-obs">Motivo: {r.motivoUrgencia}</div>}</td>
                 <td data-label="Situação"><StatusBadge status={r.status} />{r.observacaoAdmin && <div className="coap-obs">{r.observacaoAdmin}</div>}</td>
                 {!somenteLeitura && (
                   <td data-label="Ações">
@@ -861,6 +881,7 @@ function TabelaCompras({ items, somenteLeitura, onApprove, onReject, onPurchase,
                       </>}
                       {r.status === 'aprovada' && <button className="coap-mini-btn" onClick={() => onPurchase(r.id)}>Marcar comprado</button>}
                       {r.status === 'comprada' && <button className="coap-mini-btn" onClick={() => onDeliver(r.id)}>Marcar entregue</button>}
+                      <button className="coap-mini-btn reject" onClick={() => onDelete(r.id, `${r.material} (${r.solicitante})`)}><X size={12} /> Excluir</button>
                     </div>
                   </td>
                 )}
@@ -884,7 +905,7 @@ function TabelaCompras({ items, somenteLeitura, onApprove, onReject, onPurchase,
   );
 }
 
-function TabelaReunioes({ items, somenteLeitura, onApprove, onReject, onPurchase, onDeliver }) {
+function TabelaReunioes({ items, somenteLeitura, onApprove, onReject, onPurchase, onDeliver, onDelete }) {
   const [rejeitando, setRejeitando] = useState(null);
   const [obs, setObs] = useState('');
 
@@ -920,6 +941,7 @@ function TabelaReunioes({ items, somenteLeitura, onApprove, onReject, onPurchase
                       </>}
                       {r.status === 'aprovada' && <button className="coap-mini-btn" onClick={() => onPurchase(r.id)}>Marcar comprado</button>}
                       {r.status === 'comprada' && <button className="coap-mini-btn" onClick={() => onDeliver(r.id)}>Marcar entregue</button>}
+                      <button className="coap-mini-btn reject" onClick={() => onDelete(r.id, `${r.assunto} (${r.solicitante})`)}><X size={12} /> Excluir</button>
                     </div>
                   </td>
                 )}
@@ -1100,7 +1122,7 @@ function PainelGestao({ session, requests, users, config, onLogout, onRefresh, a
         <>
           <Filtros filtros={filtros} setFiltros={setFiltros} setores={setores} solicitantes={solicitantes} mostrarStatus />
           <TabelaCompras items={comprasFiltradas} somenteLeitura={somenteLeitura}
-            onApprove={actions.approve} onReject={actions.reject} onPurchase={actions.purchase} onDeliver={actions.deliver} />
+            onApprove={actions.approve} onReject={actions.reject} onPurchase={actions.purchase} onDeliver={actions.deliver} onDelete={actions.remove} />
         </>
       )}
 
@@ -1108,7 +1130,7 @@ function PainelGestao({ session, requests, users, config, onLogout, onRefresh, a
         <>
           <Filtros filtros={filtros} setFiltros={setFiltros} setores={setores} solicitantes={solicitantes} mostrarStatus />
           <TabelaReunioes items={reunioesFiltradas} somenteLeitura={somenteLeitura}
-            onApprove={actions.approve} onReject={actions.reject} onPurchase={actions.purchase} onDeliver={actions.deliver} />
+            onApprove={actions.approve} onReject={actions.reject} onPurchase={actions.purchase} onDeliver={actions.deliver} onDelete={actions.remove} />
         </>
       )}
 
@@ -1120,13 +1142,14 @@ function PainelGestao({ session, requests, users, config, onLogout, onRefresh, a
               {historicoCompras.length === 0 ? <div className="coap-empty">Ainda não há ciclos de compras encerrados.</div> : (
                 <table className="coap-table">
                   <thead>
-                    <tr><th>Ciclo</th><th>Solicitante</th><th>Setor</th><th>Material</th><th>Qtd.</th><th>Data limite</th><th>Situação</th></tr>
+                    <tr><th>Ciclo</th><th>Solicitante</th><th>Setor</th><th>Material</th><th>Qtd.</th><th>Data limite</th><th>Situação</th>{!somenteLeitura && <th>Ações</th>}</tr>
                   </thead>
                   <tbody>
                     {historicoCompras.map(r => (
                       <tr key={r.id}>
                         <td data-label="Ciclo">{r.ciclo}</td><td data-label="Solicitante">{r.solicitante}</td><td data-label="Setor">{r.setor}</td><td data-label="Material">{r.material}</td>
                         <td data-label="Qtd.">{r.quantidade}</td><td data-label="Data limite">{formatDateBR(r.dataLimite)}</td><td data-label="Situação"><StatusBadge status={r.status} /></td>
+                        {!somenteLeitura && <td data-label="Ações"><button className="coap-mini-btn reject" onClick={() => actions.remove(r.id, `${r.material} (${r.solicitante})`)}><X size={12} /> Excluir</button></td>}
                       </tr>
                     ))}
                   </tbody>
@@ -1140,13 +1163,14 @@ function PainelGestao({ session, requests, users, config, onLogout, onRefresh, a
               {historicoReunioes.length === 0 ? <div className="coap-empty">Ainda não há ciclos de reuniões encerrados.</div> : (
                 <table className="coap-table">
                   <thead>
-                    <tr><th>Ciclo</th><th>Solicitante</th><th>Setor</th><th>Assunto</th><th>Data / horário</th><th>Situação</th></tr>
+                    <tr><th>Ciclo</th><th>Solicitante</th><th>Setor</th><th>Assunto</th><th>Data / horário</th><th>Situação</th>{!somenteLeitura && <th>Ações</th>}</tr>
                   </thead>
                   <tbody>
                     {historicoReunioes.map(r => (
                       <tr key={r.id}>
                         <td data-label="Ciclo">{r.ciclo}</td><td data-label="Solicitante">{r.solicitante}</td><td data-label="Setor">{r.setor}</td><td data-label="Assunto">{r.assunto}</td>
                         <td data-label="Data / horário">{formatDateTimeBR(r.dataHorario)}</td><td data-label="Situação"><StatusBadge status={r.status} /></td>
+                        {!somenteLeitura && <td data-label="Ações"><button className="coap-mini-btn reject" onClick={() => actions.remove(r.id, `${r.assunto} (${r.solicitante})`)}><X size={12} /> Excluir</button></td>}
                       </tr>
                     ))}
                   </tbody>
@@ -1232,11 +1256,20 @@ export default function App() {
     persistRequests(requests.map(r => (r.id === id ? { ...r, ...patch } : r)));
   }
 
+  function deleteRequest(id) {
+    persistRequests(requests.filter(r => r.id !== id));
+    showToast('Solicitação excluída');
+  }
+
   const actions = {
     approve: id => updateRequest(id, { status: 'aprovada', aprovadoEm: new Date().toISOString() }),
     reject: (id, obs) => updateRequest(id, { status: 'reprovada', observacaoAdmin: obs, aprovadoEm: new Date().toISOString() }),
     purchase: id => updateRequest(id, { status: 'comprada', compradoEm: new Date().toISOString() }),
     deliver: id => updateRequest(id, { status: 'entregue', entregueEm: new Date().toISOString() }),
+    remove: (id, descricao) => {
+      if (!window.confirm(`Excluir definitivamente "${descricao}"? Essa ação não pode ser desfeita.`)) return;
+      deleteRequest(id);
+    },
     encerrarCiclo: () => {
       if (!window.confirm(`Isso arquiva o ciclo atual (nº ${config.cicloAtual}) — compras E reuniões — e inicia um novo ciclo. O histórico continua disponível para consulta. Confirmar?`)) return;
       persistConfig({ ...config, cicloAtual: config.cicloAtual + 1, cicloInicioEm: todayISO() });
