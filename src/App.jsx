@@ -333,6 +333,17 @@ function GlobalStyle() {
       .coap-shop-item-info span { font-size: 12px; opacity: 0.8; }
       .coap-shop-empty { font-size: 13px; opacity: 0.85; padding: 6px 0; }
 
+      /* checklist do modo compras */
+      .coap-check-list { display: flex; flex-direction: column; }
+      .coap-check-item { display: flex; align-items: center; gap: 14px; padding: 13px 8px; border-bottom: 1px solid var(--border); cursor: pointer; }
+      .coap-check-item:last-child { border-bottom: none; }
+      .coap-check-item input[type="checkbox"] { width: 25px; height: 25px; accent-color: var(--primary); flex-shrink: 0; cursor: pointer; }
+      .coap-check-info { display: flex; flex-direction: column; gap: 2px; }
+      .coap-check-info strong { font-size: 15px; }
+      .coap-check-info span { font-size: 12.5px; color: var(--ink-soft); display: flex; align-items: center; gap: 4px; }
+      .coap-check-item.checked { background: var(--surface-alt); border-radius: 8px; }
+      .coap-check-item.checked .coap-check-info strong, .coap-check-item.checked .coap-check-info span { text-decoration: line-through; color: var(--ink-soft); }
+
       /* filtros */
       .coap-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 10px 14px; margin-bottom: 16px; }
       .coap-filters .coap-field { margin-bottom: 0; }
@@ -1043,11 +1054,52 @@ function aplicaFiltros(items, filtros) {
   );
 }
 
+/* ---------- tela de compras (modo checklist) ---------- */
+
+function ModoCompras({ itens, wedAtual, onTogglePurchased, onClose }) {
+  const porSetor = {};
+  itens.forEach(r => { (porSetor[r.setor] = porSetor[r.setor] || []).push(r); });
+  const setores = Object.keys(porSetor).sort();
+  const compradosCount = itens.filter(r => r.status === 'comprada').length;
+
+  return (
+    <div className="coap-shell">
+      <div className="coap-topbar">
+        <div className="coap-brand-text">
+          <h1>Lista de compras</h1>
+          <span>quarta-feira, {formatDateLongBR(wedAtual)} · {compradosCount} de {itens.length} já comprados</span>
+        </div>
+        <button className="coap-iconbtn" onClick={onClose}><ChevronLeft size={13} /> Voltar ao painel</button>
+      </div>
+
+      {itens.length === 0 && <div className="coap-panel coap-empty">Nada aprovado para essa data ainda.</div>}
+
+      {setores.map(setor => (
+        <div className="coap-panel" key={setor}>
+          <h2>{setor}</h2>
+          <div className="coap-check-list">
+            {porSetor[setor].map(r => (
+              <label className={`coap-check-item ${r.status === 'comprada' ? 'checked' : ''}`} key={r.id}>
+                <input type="checkbox" checked={r.status === 'comprada'} onChange={() => onTogglePurchased(r)} />
+                <div className="coap-check-info">
+                  <strong>{r.material} — {r.quantidade}</strong>
+                  <span>{r.solicitante}{r.link && <> · <a className="coap-link" href={r.link} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}><ExternalLink size={11} /> link</a></>}</span>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ---------- visão admin / diretor (compartilhada) ---------- */
 
 function PainelGestao({ session, requests, users, config, onLogout, onRefresh, actions, somenteLeitura }) {
   const [aba, setAba] = useState('compras');
   const [filtros, setFiltros] = useState({ setor: '', solicitante: '', status: '' });
+  const [modoCompras, setModoCompras] = useState(false);
 
   const setores = [...new Set(users.map(u => u.setor))];
   const solicitantes = [...new Set(users.map(u => u.name))];
@@ -1072,6 +1124,20 @@ function PainelGestao({ session, requests, users, config, onLogout, onRefresh, a
   const listaDestaQuarta = comprasCiclo.filter(r => r.status === 'aprovada' && r.quartaAlvo === wedAtualISO);
   const listaProximaSemana = comprasCiclo.filter(r => r.status === 'aprovada' && r.quartaAlvo === wedProximaISO);
   const pendentesDestaQuarta = comprasCiclo.filter(r => r.status === 'pendente' && r.quartaAlvo === wedAtualISO).length;
+  const itensModoCompras = comprasCiclo
+    .filter(r => (r.status === 'aprovada' || r.status === 'comprada') && r.quartaAlvo === wedAtualISO)
+    .sort((a, b) => a.material.localeCompare(b.material));
+
+  if (modoCompras) {
+    return (
+      <ModoCompras
+        itens={itensModoCompras}
+        wedAtual={wedAtual}
+        onTogglePurchased={r => (r.status === 'comprada' ? actions.revertPurchase(r.id) : actions.purchase(r.id))}
+        onClose={() => setModoCompras(false)}
+      />
+    );
+  }
 
   return (
     <div className="coap-shell">
@@ -1083,6 +1149,7 @@ function PainelGestao({ session, requests, users, config, onLogout, onRefresh, a
         <div className="coap-who">
           <span><b>{somenteLeitura ? 'Diretor' : 'Administrador'}</b></span>
           <button className="coap-iconbtn" onClick={onRefresh}><RefreshCw size={13} /> Atualizar</button>
+          {!somenteLeitura && <button className="coap-iconbtn" onClick={() => setModoCompras(true)}><ShoppingCart size={13} /> Lista de compras</button>}
           {!somenteLeitura && <button className="coap-iconbtn" onClick={actions.encerrarCiclo}><Archive size={13} /> Encerrar ciclo</button>}
           <button className="coap-iconbtn" onClick={onLogout}><LogOut size={13} /> Sair</button>
         </div>
@@ -1265,6 +1332,7 @@ export default function App() {
     approve: id => updateRequest(id, { status: 'aprovada', aprovadoEm: new Date().toISOString() }),
     reject: (id, obs) => updateRequest(id, { status: 'reprovada', observacaoAdmin: obs, aprovadoEm: new Date().toISOString() }),
     purchase: id => updateRequest(id, { status: 'comprada', compradoEm: new Date().toISOString() }),
+    revertPurchase: id => updateRequest(id, { status: 'aprovada', compradoEm: null }),
     deliver: id => updateRequest(id, { status: 'entregue', entregueEm: new Date().toISOString() }),
     remove: (id, descricao) => {
       if (!window.confirm(`Excluir definitivamente "${descricao}"? Essa ação não pode ser desfeita.`)) return;
