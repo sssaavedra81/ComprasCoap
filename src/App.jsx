@@ -26,6 +26,7 @@ const DEFAULT_CONFIG = {
   cicloInicioEm: todayISO(),
   adminPin: '0000',
   diretorPin: '0000',
+  assistentePin: '0000',
 };
 
 const STATUS_LABELS = {
@@ -117,6 +118,16 @@ function quartaMaisProxima() {
   const wed = new Date(today);
   wed.setDate(today.getDate() + diff);
   return wed;
+}
+
+/** Itens aprovados/comprados desta quarta-feira, para a tela de checklist. */
+function itensParaComprarNestaQuarta(requests, cicloAtual) {
+  const wedAtual = quartaMaisProxima();
+  const wedAtualISO = toISODate(wedAtual);
+  const itens = requests
+    .filter(r => r.tipo === 'compra' && r.ciclo === cicloAtual && (r.status === 'aprovada' || r.status === 'comprada') && r.quartaAlvo === wedAtualISO)
+    .sort((a, b) => a.material.localeCompare(b.material));
+  return { wedAtual, itens };
 }
 
 function calcPrioridade(dataLimiteStr) {
@@ -422,7 +433,7 @@ function GlobalStyle() {
 
       .coap-settings-block { margin-bottom: 22px; }
       .coap-settings-block h3 { font-size: 14.5px; margin-bottom: 10px; }
-      .coap-user-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+      .coap-user-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13.5px; flex-wrap: wrap; }
       .coap-user-row .name { width: 110px; font-weight: 600; }
       .coap-user-row .setor { flex: 1; color: var(--ink-soft); }
       .coap-user-row input { width: 70px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 6px; }
@@ -465,7 +476,7 @@ function LoadingScreen() {
 
 /* ---------- login ---------- */
 
-function LoginScreen({ users, onLoginSolicitante, onLoginAdmin, onLoginDiretor }) {
+function LoginScreen({ users, onLoginSolicitante, onLoginAdmin, onLoginDiretor, onLoginAssistente }) {
   const [role, setRole] = useState('solicitante');
   const [nome, setNome] = useState('');
   const [pin, setPin] = useState('');
@@ -481,8 +492,11 @@ function LoginScreen({ users, onLoginSolicitante, onLoginAdmin, onLoginDiretor }
     } else if (role === 'admin') {
       const ok = onLoginAdmin(pin.trim());
       if (ok === false) setErro('PIN incorreto.');
-    } else {
+    } else if (role === 'diretor') {
       const ok = onLoginDiretor(pin.trim());
+      if (ok === false) setErro('PIN incorreto.');
+    } else {
+      const ok = onLoginAssistente(pin.trim());
       if (ok === false) setErro('PIN incorreto.');
     }
   }
@@ -499,6 +513,7 @@ function LoginScreen({ users, onLoginSolicitante, onLoginAdmin, onLoginDiretor }
           <div className="coap-roles">
             <button type="button" className={`coap-role-tab ${role === 'solicitante' ? 'active' : ''}`} onClick={() => { setRole('solicitante'); setErro(''); }}>Solicitante</button>
             <button type="button" className={`coap-role-tab ${role === 'admin' ? 'active' : ''}`} onClick={() => { setRole('admin'); setErro(''); }}>Administrador</button>
+            <button type="button" className={`coap-role-tab ${role === 'assistente' ? 'active' : ''}`} onClick={() => { setRole('assistente'); setErro(''); }}>Compras</button>
             <button type="button" className={`coap-role-tab ${role === 'diretor' ? 'active' : ''}`} onClick={() => { setRole('diretor'); setErro(''); }}>Diretor</button>
           </div>
           <form onSubmit={submit}>
@@ -982,6 +997,7 @@ function PainelConfig({ users, config, onChangeUserPin, onChangeConfigPin }) {
   const [pins, setPins] = useState({});
   const [adminPin, setAdminPin] = useState('');
   const [diretorPin, setDiretorPin] = useState('');
+  const [assistentePin, setAssistentePin] = useState('');
 
   return (
     <div className="coap-panel">
@@ -1001,6 +1017,13 @@ function PainelConfig({ users, config, onChangeUserPin, onChangeConfigPin }) {
         <div style={{ display: 'flex', gap: 8 }}>
           <input placeholder="novo PIN" value={adminPin} onChange={e => setAdminPin(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', width: 100, borderRadius: 6 }} />
           <button className="coap-mini-btn" disabled={!adminPin} onClick={() => { onChangeConfigPin('adminPin', adminPin); setAdminPin(''); }}>Salvar</button>
+        </div>
+      </div>
+      <div className="coap-settings-block">
+        <h3>PIN da assistente de compras (Jessika)</h3>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input placeholder="novo PIN" value={assistentePin} onChange={e => setAssistentePin(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', width: 100, borderRadius: 6 }} />
+          <button className="coap-mini-btn" disabled={!assistentePin} onClick={() => { onChangeConfigPin('assistentePin', assistentePin); setAssistentePin(''); }}>Salvar</button>
         </div>
       </div>
       <div className="coap-settings-block">
@@ -1056,7 +1079,7 @@ function aplicaFiltros(items, filtros) {
 
 /* ---------- tela de compras (modo checklist) ---------- */
 
-function ModoCompras({ itens, wedAtual, onTogglePurchased, onClose }) {
+function ModoCompras({ itens, wedAtual, onTogglePurchased, onClose, closeLabel, onRefresh }) {
   const porSetor = {};
   itens.forEach(r => { (porSetor[r.setor] = porSetor[r.setor] || []).push(r); });
   const setores = Object.keys(porSetor).sort();
@@ -1069,7 +1092,10 @@ function ModoCompras({ itens, wedAtual, onTogglePurchased, onClose }) {
           <h1>Lista de compras</h1>
           <span>quarta-feira, {formatDateLongBR(wedAtual)} · {compradosCount} de {itens.length} já comprados</span>
         </div>
-        <button className="coap-iconbtn" onClick={onClose}><ChevronLeft size={13} /> Voltar ao painel</button>
+        <div className="coap-who">
+          {onRefresh && <button className="coap-iconbtn" onClick={onRefresh}><RefreshCw size={13} /> Atualizar</button>}
+          <button className="coap-iconbtn" onClick={onClose}><ChevronLeft size={13} /> {closeLabel || 'Voltar ao painel'}</button>
+        </div>
       </div>
 
       {itens.length === 0 && <div className="coap-panel coap-empty">Nada aprovado para essa data ainda.</div>}
@@ -1091,6 +1117,22 @@ function ModoCompras({ itens, wedAtual, onTogglePurchased, onClose }) {
         </div>
       ))}
     </div>
+  );
+}
+
+/* ---------- visão da assistente de compras ---------- */
+
+function AssistenteView({ requests, config, actions, onLogout, onRefresh }) {
+  const { wedAtual, itens } = itensParaComprarNestaQuarta(requests, config.cicloAtual);
+  return (
+    <ModoCompras
+      itens={itens}
+      wedAtual={wedAtual}
+      onTogglePurchased={r => (r.status === 'comprada' ? actions.revertPurchase(r.id) : actions.purchase(r.id))}
+      onClose={onLogout}
+      closeLabel="Sair"
+      onRefresh={onRefresh}
+    />
   );
 }
 
@@ -1124,9 +1166,7 @@ function PainelGestao({ session, requests, users, config, onLogout, onRefresh, a
   const listaDestaQuarta = comprasCiclo.filter(r => r.status === 'aprovada' && r.quartaAlvo === wedAtualISO);
   const listaProximaSemana = comprasCiclo.filter(r => r.status === 'aprovada' && r.quartaAlvo === wedProximaISO);
   const pendentesDestaQuarta = comprasCiclo.filter(r => r.status === 'pendente' && r.quartaAlvo === wedAtualISO).length;
-  const itensModoCompras = comprasCiclo
-    .filter(r => (r.status === 'aprovada' || r.status === 'comprada') && r.quartaAlvo === wedAtualISO)
-    .sort((a, b) => a.material.localeCompare(b.material));
+  const itensModoCompras = itensParaComprarNestaQuarta(requests, config.cicloAtual).itens;
 
   if (modoCompras) {
     return (
@@ -1308,6 +1348,10 @@ export default function App() {
     if (pin !== config.diretorPin) return false;
     setSession({ role: 'diretor' });
   }
+  function handleLoginAssistente(pin) {
+    if (pin !== config.assistentePin) return false;
+    setSession({ role: 'assistente' });
+  }
   function logout() { setSession(null); }
 
   function addRequest(data) {
@@ -1356,6 +1400,7 @@ export default function App() {
         onLoginSolicitante={handleLoginSolicitante}
         onLoginAdmin={handleLoginAdmin}
         onLoginDiretor={handleLoginDiretor}
+        onLoginAssistente={handleLoginAssistente}
       />
     );
   }
@@ -1380,6 +1425,12 @@ export default function App() {
         <PainelGestao
           session={session} requests={requests} users={users} config={config}
           onLogout={logout} onRefresh={refreshAll} actions={actions} somenteLeitura={true}
+        />
+      )}
+      {session.role === 'assistente' && (
+        <AssistenteView
+          requests={requests} config={config} actions={actions}
+          onLogout={logout} onRefresh={refreshAll}
         />
       )}
       {toast && <div className="coap-toast">{toast}</div>}
