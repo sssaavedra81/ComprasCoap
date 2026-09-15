@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   ShoppingBag, LogOut, Plus, ExternalLink,
   Settings, Check, X, RefreshCw, ChevronLeft, Lock,
-  UtensilsCrossed, Archive, ClipboardList, Calendar, ShoppingCart
+  UtensilsCrossed, Archive, ClipboardList, Calendar, ShoppingCart, Pencil
 } from 'lucide-react';
 
 /* ---------- dados iniciais ---------- */
@@ -19,6 +19,8 @@ const SEED_USERS = [
   { name: 'Katiane', setor: 'Orientação 3', pin: '0000' },
   { name: 'Alice', setor: 'Secretaria', pin: '0000' },
   { name: 'Elivelto', setor: 'Capelania', pin: '0000' },
+  { name: 'Alan', setor: 'TI', pin: '0000' },
+  { name: 'Alex', setor: 'Disciplinar', pin: '0000' },
 ];
 
 const DEFAULT_CONFIG = {
@@ -53,6 +55,9 @@ const PRIORIDADE_CLASS = {
 };
 
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+const APP_VERSION = '1.2';
+const APP_DEVELOPER = 'Daniel Saavedra';
 
 /* ---------- utilitários ---------- */
 
@@ -254,7 +259,8 @@ function GlobalStyle() {
       .coap-iconbtn:hover { border-color: var(--primary); background: var(--primary-soft); }
 
       /* login */
-      .coap-login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: linear-gradient(180deg, var(--primary) 0%, var(--primary) 220px, var(--bg) 220px); }
+      .coap-login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: linear-gradient(180deg, var(--primary) 0%, var(--primary) 220px, var(--bg) 220px); position: relative; }
+      .coap-version-footer { position: fixed; bottom: 12px; left: 16px; font-size: 11px; line-height: 1.5; color: var(--ink-soft); opacity: 0.65; }
       .coap-login-card { width: 100%; max-width: 420px; background: var(--surface); border-radius: 16px; padding: 30px 28px; box-shadow: 0 18px 40px rgba(10,30,78,0.18); }
       .coap-login-logo { height: 90px; width: auto; display: block; margin: 0 auto 16px; }
       .coap-login-hero { margin-bottom: 22px; text-align: center; }
@@ -535,6 +541,10 @@ function LoginScreen({ users, onLoginSolicitante, onLoginAdmin, onLoginDiretor, 
           </form>
           <p className="coap-hint">PIN padrão: 0000. Depois do primeiro acesso, altere o seu PIN dentro do sistema.</p>
         </div>
+        <div className="coap-version-footer">
+          <div>v{APP_VERSION}</div>
+          <div>Desenvolvido por: {APP_DEVELOPER}</div>
+        </div>
       </div>
     </div>
   );
@@ -558,13 +568,13 @@ function EventoBadge({ dataHorario }) {
 
 /* ---------- formulário: nova compra ---------- */
 
-function FormCompra({ onCancel, onSubmit }) {
-  const [material, setMaterial] = useState('');
-  const [quantidade, setQuantidade] = useState('');
-  const [atividadeProjeto, setAtividadeProjeto] = useState('');
-  const [link, setLink] = useState('');
-  const [dataLimite, setDataLimite] = useState('');
-  const [observacoesSolicitante, setObservacoesSolicitante] = useState('');
+function FormCompra({ onCancel, onSubmit, initial }) {
+  const [material, setMaterial] = useState(initial?.material || '');
+  const [quantidade, setQuantidade] = useState(initial ? String(initial.quantidade) : '');
+  const [atividadeProjeto, setAtividadeProjeto] = useState(initial?.atividadeProjeto || '');
+  const [link, setLink] = useState(initial?.link || '');
+  const [dataLimite, setDataLimite] = useState(initial?.dataLimite || '');
+  const [observacoesSolicitante, setObservacoesSolicitante] = useState(initial?.observacoesSolicitante || '');
 
   const alvo = proximaQuartaValida();
   const alvoISO = toISODate(alvo);
@@ -583,11 +593,11 @@ function FormCompra({ onCancel, onSubmit }) {
   return (
     <div className="coap-panel">
       <button className="coap-back" onClick={onCancel}><ChevronLeft size={15} /> Voltar</button>
-      <h2>Nova solicitação de compra</h2>
+      <h2>{initial ? 'Editar solicitação de compra' : 'Nova solicitação de compra'}</h2>
       <div className="coap-info-banner">
         <Calendar size={16} />
         <span>
-          Enviando agora, sua solicitação entra na compra de <strong>quarta-feira, {formatDateLongBR(alvo)}</strong>.
+          {initial ? 'Salvando agora, sua' : 'Enviando agora, sua'} solicitação entra na compra de <strong>quarta-feira, {formatDateLongBR(alvo)}</strong>.
           As compras fecham toda <strong>terça-feira às 12h</strong> — pedidos enviados depois desse horário entram automaticamente na semana seguinte.
         </span>
       </div>
@@ -626,7 +636,7 @@ function FormCompra({ onCancel, onSubmit }) {
           <label>Observações (opcional)</label>
           <textarea value={observacoesSolicitante} onChange={e => setObservacoesSolicitante(e.target.value)} />
         </div>
-        <button className="coap-btn accent" type="submit" disabled={!podeEnviar}><Check size={15} /> Enviar solicitação</button>
+        <button className="coap-btn accent" type="submit" disabled={!podeEnviar}><Check size={15} /> {initial ? 'Salvar alterações' : 'Enviar solicitação'}</button>
       </form>
     </div>
   );
@@ -634,12 +644,12 @@ function FormCompra({ onCancel, onSubmit }) {
 
 /* ---------- formulário: nova reunião / capacitação ---------- */
 
-function FormReuniao({ onCancel, onSubmit }) {
-  const [assunto, setAssunto] = useState('');
-  const [dataHorario, setDataHorario] = useState('');
-  const [participantes, setParticipantes] = useState('');
-  const [cardapioSugestao, setCardapioSugestao] = useState('');
-  const [observacoesSolicitante, setObservacoesSolicitante] = useState('');
+function FormReuniao({ onCancel, onSubmit, initial }) {
+  const [assunto, setAssunto] = useState(initial?.assunto || '');
+  const [dataHorario, setDataHorario] = useState(initial?.dataHorario || '');
+  const [participantes, setParticipantes] = useState(initial ? String(initial.participantes) : '');
+  const [cardapioSugestao, setCardapioSugestao] = useState(initial?.cardapioSugestao || '');
+  const [observacoesSolicitante, setObservacoesSolicitante] = useState(initial?.observacoesSolicitante || '');
 
   function submit(e) {
     e.preventDefault();
@@ -653,7 +663,7 @@ function FormReuniao({ onCancel, onSubmit }) {
   return (
     <div className="coap-panel">
       <button className="coap-back" onClick={onCancel}><ChevronLeft size={15} /> Voltar</button>
-      <h2>Nova reunião, capacitação ou treinamento</h2>
+      <h2>{initial ? 'Editar reunião, capacitação ou treinamento' : 'Nova reunião, capacitação ou treinamento'}</h2>
       <p className="coap-modal-sub">A alimentação desse tipo de solicitação é comprada fresca, no próprio dia do evento — por isso ela não segue o ciclo semanal de compras.</p>
       <form onSubmit={submit}>
         <div className="coap-field">
@@ -676,7 +686,7 @@ function FormReuniao({ onCancel, onSubmit }) {
           <label>Observações (opcional)</label>
           <textarea value={observacoesSolicitante} onChange={e => setObservacoesSolicitante(e.target.value)} />
         </div>
-        <button className="coap-btn accent" type="submit"><Check size={15} /> Enviar solicitação</button>
+        <button className="coap-btn accent" type="submit"><Check size={15} /> {initial ? 'Salvar alterações' : 'Enviar solicitação'}</button>
       </form>
     </div>
   );
@@ -706,14 +716,25 @@ function PinModal({ onClose, onSave }) {
 
 /* ---------- visão do solicitante ---------- */
 
-function RequesterView({ session, requests, config, onLogout, onRefresh, onAdd, onChangePin }) {
+function RequesterView({ session, requests, config, onLogout, onRefresh, onAdd, onEdit, onChangePin }) {
   const [tela, setTela] = useState('lista');
+  const [editando, setEditando] = useState(null);
   const [showPin, setShowPin] = useState(false);
   const [aba, setAba] = useState('compra');
 
   const minhas = requests.filter(r => r.solicitante === session.name);
   const minhasCompras = minhas.filter(r => r.tipo === 'compra').sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
   const minhasReunioes = minhas.filter(r => r.tipo === 'reuniao').sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
+
+  function abrirEdicao(r) {
+    setEditando(r);
+    setTela(r.tipo);
+  }
+
+  function fecharFormulario() {
+    setTela('lista');
+    setEditando(null);
+  }
 
   return (
     <div className="coap-shell">
@@ -761,6 +782,9 @@ function RequesterView({ session, requests, config, onLogout, onRefresh, onAdd, 
                   {r.motivoUrgencia && <div className="coap-obs">Motivo da urgência: {r.motivoUrgencia}</div>}
                   {r.link && <a className="coap-link" href={r.link} target="_blank" rel="noreferrer"><ExternalLink size={11} /> link de compra</a>}
                   {r.observacaoAdmin && <div className="coap-obs">Observação da administração: {r.observacaoAdmin}</div>}
+                  {r.status === 'pendente' && (
+                    <button className="coap-mini-btn" style={{ marginTop: 8 }} onClick={() => abrirEdicao(r)}><Pencil size={12} /> Editar</button>
+                  )}
                 </div>
               ))}
             </div>
@@ -781,6 +805,9 @@ function RequesterView({ session, requests, config, onLogout, onRefresh, onAdd, 
                   <div className="coap-req-meta">{formatDateTimeBR(r.dataHorario)} · {r.participantes} participantes</div>
                   {r.cardapioSugestao && <div className="coap-obs">Cardápio sugerido: {r.cardapioSugestao}</div>}
                   {r.observacaoAdmin && <div className="coap-obs">Observação da administração: {r.observacaoAdmin}</div>}
+                  {r.status === 'pendente' && (
+                    <button className="coap-mini-btn" style={{ marginTop: 8 }} onClick={() => abrirEdicao(r)}><Pencil size={12} /> Editar</button>
+                  )}
                 </div>
               ))}
             </div>
@@ -790,14 +817,22 @@ function RequesterView({ session, requests, config, onLogout, onRefresh, onAdd, 
 
       {tela === 'compra' && (
         <FormCompra
-          onCancel={() => setTela('lista')}
-          onSubmit={data => { onAdd({ ...data, solicitante: session.name, setor: session.setor }); setTela('lista'); }}
+          initial={editando}
+          onCancel={fecharFormulario}
+          onSubmit={data => {
+            if (editando) { onEdit(editando.id, data); } else { onAdd({ ...data, solicitante: session.name, setor: session.setor }); }
+            fecharFormulario();
+          }}
         />
       )}
       {tela === 'reuniao' && (
         <FormReuniao
-          onCancel={() => setTela('lista')}
-          onSubmit={data => { onAdd({ ...data, solicitante: session.name, setor: session.setor }); setTela('lista'); }}
+          initial={editando}
+          onCancel={fecharFormulario}
+          onSubmit={data => {
+            if (editando) { onEdit(editando.id, data); } else { onAdd({ ...data, solicitante: session.name, setor: session.setor }); }
+            fecharFormulario();
+          }}
         />
       )}
 
@@ -1363,6 +1398,11 @@ export default function App() {
     showToast('Solicitação enviada');
   }
 
+  function editOwnRequest(id, data) {
+    persistRequests(requests.map(r => (r.id === id ? { ...r, ...data } : r)));
+    showToast('Solicitação atualizada');
+  }
+
   function updateRequest(id, patch) {
     persistRequests(requests.map(r => (r.id === id ? { ...r, ...patch } : r)));
   }
@@ -1411,7 +1451,7 @@ export default function App() {
       {session.role === 'solicitante' && (
         <RequesterView
           session={session} requests={requests} config={config}
-          onLogout={logout} onRefresh={refreshAll} onAdd={addRequest}
+          onLogout={logout} onRefresh={refreshAll} onAdd={addRequest} onEdit={editOwnRequest}
           onChangePin={actions.changeUserPin}
         />
       )}
