@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   ShoppingBag, LogOut, Plus, ExternalLink,
   Settings, Check, X, RefreshCw, ChevronLeft, Lock,
-  UtensilsCrossed, Archive, ClipboardList, Calendar, ShoppingCart, Pencil
+  UtensilsCrossed, Archive, ClipboardList, Calendar, ShoppingCart, Pencil, Eye
 } from 'lucide-react';
 
 /* ---------- dados iniciais ---------- */
@@ -281,6 +281,10 @@ function GlobalStyle() {
         border-color: var(--primary); background: var(--surface);
       }
       .coap-field textarea { resize: vertical; min-height: 64px; }
+      .coap-item-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+      .coap-item-row-fields { display: flex; gap: 8px; flex: 1; flex-wrap: wrap; }
+      .coap-item-row-fields input { flex: 1; min-width: 110px; padding: 9px 10px; background: var(--surface-alt); border: 1.5px solid transparent; border-radius: 8px; outline: none; }
+      .coap-item-row-fields input:focus { border-color: var(--primary); background: var(--surface); }
       .coap-btn {
         display: inline-flex; align-items: center; justify-content: center; gap: 7px;
         background: var(--primary); color: #fff; border: none;
@@ -434,6 +438,8 @@ function GlobalStyle() {
       .coap-modal h2 { font-size: 18px; margin-bottom: 4px; }
       .coap-modal .coap-modal-sub { font-size: 13px; color: var(--ink-soft); margin-bottom: 16px; }
       .coap-modal-foot { display: flex; gap: 10px; margin-top: 18px; }
+      .coap-detail-list { display: flex; flex-direction: column; gap: 9px; font-size: 13.5px; margin-bottom: 6px; }
+      .coap-detail-list strong { color: var(--ink-soft); font-weight: 600; margin-right: 4px; }
 
       .coap-back { display: inline-flex; align-items: center; gap: 5px; background: none; border: none; color: var(--ink-soft); font-size: 13px; margin-bottom: 14px; padding: 0; }
 
@@ -569,25 +575,42 @@ function EventoBadge({ dataHorario }) {
 /* ---------- formulário: nova compra ---------- */
 
 function FormCompra({ onCancel, onSubmit, initial }) {
-  const [material, setMaterial] = useState(initial?.material || '');
-  const [quantidade, setQuantidade] = useState(initial ? String(initial.quantidade) : '');
+  const [itens, setItens] = useState(
+    initial ? [{ material: initial.material, quantidade: String(initial.quantidade), link: initial.link || '' }]
+      : [{ material: '', quantidade: '', link: '' }]
+  );
   const [atividadeProjeto, setAtividadeProjeto] = useState(initial?.atividadeProjeto || '');
-  const [link, setLink] = useState(initial?.link || '');
   const [dataLimite, setDataLimite] = useState(initial?.dataLimite || '');
   const [observacoesSolicitante, setObservacoesSolicitante] = useState(initial?.observacoesSolicitante || '');
 
   const alvo = proximaQuartaValida();
   const alvoISO = toISODate(alvo);
   const prazoImpossivel = dataLimite !== '' && dataLimite < alvoISO;
-  const podeEnviar = material && quantidade && atividadeProjeto && dataLimite && !prazoImpossivel;
+  const itensValidos = itens.every(it => it.material.trim() && it.quantidade);
+  const podeEnviar = itensValidos && atividadeProjeto && dataLimite && !prazoImpossivel;
+
+  function atualizarItem(idx, campo, valor) {
+    setItens(itens.map((it, i) => (i === idx ? { ...it, [campo]: valor } : it)));
+  }
+
+  function adicionarItem() {
+    setItens([...itens, { material: '', quantidade: '', link: '' }]);
+  }
+
+  function removerItem(idx) {
+    setItens(itens.filter((_, i) => i !== idx));
+  }
 
   function submit(e) {
     e.preventDefault();
     if (!podeEnviar) return;
-    onSubmit({
-      tipo: 'compra', material, quantidade: Number(quantidade), atividadeProjeto,
-      link, dataLimite, observacoesSolicitante, quartaAlvo: alvoISO,
-    });
+    const grupoId = itens.length > 1 ? uid() : undefined;
+    const dados = itens.map((it, idx) => ({
+      tipo: 'compra', material: it.material.trim(), quantidade: Number(it.quantidade), link: it.link,
+      atividadeProjeto, dataLimite, observacoesSolicitante, quartaAlvo: alvoISO,
+      ...(grupoId ? { grupoId, grupoIndex: idx + 1, grupoTotal: itens.length } : {}),
+    }));
+    onSubmit(dados);
   }
 
   return (
@@ -603,25 +626,37 @@ function FormCompra({ onCancel, onSubmit, initial }) {
       </div>
       <form onSubmit={submit}>
         <div className="coap-field">
-          <label>Material solicitado</label>
-          <input value={material} onChange={e => setMaterial(e.target.value)} required />
-        </div>
-        <div className="coap-field">
-          <label>Quantidade</label>
-          <input type="number" min="1" value={quantidade} onChange={e => setQuantidade(e.target.value)} required />
-        </div>
-        <div className="coap-field">
           <label>Atividade / projeto em que será usado</label>
-          <input value={atividadeProjeto} onChange={e => setAtividadeProjeto(e.target.value)} required />
-        </div>
-        <div className="coap-field">
-          <label>Link para compra on-line (se tiver)</label>
-          <input value={link} onChange={e => setLink(e.target.value)} placeholder="https://" />
+          <input value={atividadeProjeto} onChange={e => setAtividadeProjeto(e.target.value)} required placeholder="Ex.: Spelling Bee" />
         </div>
         <div className="coap-field">
           <label>Data limite — quando precisa ter o material em mãos</label>
           <input type="date" value={dataLimite} onChange={e => setDataLimite(e.target.value)} required />
         </div>
+
+        {!initial && itens.length > 1 && (
+          <p className="coap-modal-sub">Data limite e atividade valem para todos os itens abaixo. Cada item vira uma solicitação própria, aparecendo separado na lista de compras.</p>
+        )}
+
+        {itens.map((it, idx) => (
+          <div className="coap-item-row" key={idx}>
+            <div className="coap-item-row-fields">
+              <input placeholder="Material solicitado" value={it.material} onChange={e => atualizarItem(idx, 'material', e.target.value)} required />
+              <input placeholder="Quantidade" type="number" min="1" value={it.quantidade} onChange={e => atualizarItem(idx, 'quantidade', e.target.value)} required />
+              <input placeholder="Link (opcional)" value={it.link} onChange={e => atualizarItem(idx, 'link', e.target.value)} />
+            </div>
+            {!initial && itens.length > 1 && (
+              <button type="button" className="coap-mini-btn reject" onClick={() => removerItem(idx)}><X size={12} /></button>
+            )}
+          </div>
+        ))}
+
+        {!initial && (
+          <button type="button" className="coap-btn secondary" style={{ marginBottom: 18 }} onClick={adicionarItem}>
+            <Plus size={14} /> Adicionar outro item deste mesmo pedido
+          </button>
+        )}
+
         {prazoImpossivel && (
           <div className="coap-warn-banner">
             <X size={16} />
@@ -636,7 +671,7 @@ function FormCompra({ onCancel, onSubmit, initial }) {
           <label>Observações (opcional)</label>
           <textarea value={observacoesSolicitante} onChange={e => setObservacoesSolicitante(e.target.value)} />
         </div>
-        <button className="coap-btn accent" type="submit" disabled={!podeEnviar}><Check size={15} /> {initial ? 'Salvar alterações' : 'Enviar solicitação'}</button>
+        <button className="coap-btn accent" type="submit" disabled={!podeEnviar}><Check size={15} /> {initial ? 'Salvar alterações' : itens.length > 1 ? `Enviar ${itens.length} itens` : 'Enviar solicitação'}</button>
       </form>
     </div>
   );
@@ -654,10 +689,10 @@ function FormReuniao({ onCancel, onSubmit, initial }) {
   function submit(e) {
     e.preventDefault();
     if (!assunto || !dataHorario || !participantes) return;
-    onSubmit({
+    onSubmit([{
       tipo: 'reuniao', assunto, dataHorario, participantes: Number(participantes),
       cardapioSugestao, observacoesSolicitante,
-    });
+    }]);
   }
 
   return (
@@ -708,6 +743,48 @@ function PinModal({ onClose, onSave }) {
         <div className="coap-modal-foot">
           <button className="coap-btn secondary" onClick={onClose}>Cancelar</button>
           <button className="coap-btn accent" disabled={!novoPin} onClick={() => { onSave(novoPin.trim()); onClose(); }}>Salvar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- modal: detalhes completos de uma solicitação ---------- */
+
+function DetalhesModal({ request, onClose }) {
+  const r = request;
+  return (
+    <div className="coap-modal-bg" onClick={onClose}>
+      <div className="coap-modal" onClick={e => e.stopPropagation()}>
+        <h2>{r.tipo === 'compra' ? r.material : r.assunto}</h2>
+        <p className="coap-modal-sub">Solicitado por {r.solicitante} · {r.setor} · registrado em {formatDateTimeBR(r.criadoEm)}</p>
+        <div className="coap-detail-list">
+          {r.tipo === 'compra' ? (
+            <>
+              <div><strong>Quantidade:</strong> {r.quantidade}</div>
+              <div><strong>Atividade / projeto:</strong> {r.atividadeProjeto}</div>
+              <div><strong>Data limite:</strong> {formatDateBR(r.dataLimite)}</div>
+              {r.quartaAlvo && <div><strong>Compra prevista:</strong> quarta-feira, {formatDateLongBR(r.quartaAlvo)}</div>}
+              <div><strong>Link de compra:</strong> {r.link ? <a className="coap-link" href={r.link} target="_blank" rel="noreferrer"><ExternalLink size={11} /> {r.link}</a> : '—'}</div>
+              {r.grupoTotal > 1 && <div><strong>Pedido com múltiplos itens:</strong> item {r.grupoIndex} de {r.grupoTotal}</div>}
+            </>
+          ) : (
+            <>
+              <div><strong>Data e horário:</strong> {formatDateTimeBR(r.dataHorario)}</div>
+              <div><strong>Participantes:</strong> {r.participantes}</div>
+              <div><strong>Cardápio sugerido:</strong> {r.cardapioSugestao || '—'}</div>
+            </>
+          )}
+          <div><strong>Observações do solicitante:</strong> {r.observacoesSolicitante || '—'}</div>
+          {r.motivoUrgencia && <div><strong>Motivo da urgência:</strong> {r.motivoUrgencia}</div>}
+          <div><strong>Situação:</strong> <StatusBadge status={r.status} /></div>
+          <div><strong>Observação da administração:</strong> {r.observacaoAdmin || '—'}</div>
+          {r.aprovadoEm && <div><strong>Avaliado em:</strong> {formatDateTimeBR(r.aprovadoEm)}</div>}
+          {r.compradoEm && <div><strong>Comprado em:</strong> {formatDateTimeBR(r.compradoEm)}</div>}
+          {r.entregueEm && <div><strong>Entregue em:</strong> {formatDateTimeBR(r.entregueEm)}</div>}
+        </div>
+        <div className="coap-modal-foot">
+          <button className="coap-btn secondary" onClick={onClose}>Fechar</button>
         </div>
       </div>
     </div>
@@ -769,7 +846,7 @@ function RequesterView({ session, requests, config, onLogout, onRefresh, onAdd, 
               {minhasCompras.map(r => (
                 <div key={r.id} className="coap-req-card">
                   <div className="coap-req-card-top">
-                    <strong>{r.material} ({r.quantidade})</strong>
+                    <strong>{r.material} ({r.quantidade}){r.grupoTotal > 1 && <span className="coap-obs"> · item {r.grupoIndex}/{r.grupoTotal}</span>}</strong>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <PrioridadeBadge dataLimite={r.dataLimite} />
                       <StatusBadge status={r.status} />
@@ -819,8 +896,8 @@ function RequesterView({ session, requests, config, onLogout, onRefresh, onAdd, 
         <FormCompra
           initial={editando}
           onCancel={fecharFormulario}
-          onSubmit={data => {
-            if (editando) { onEdit(editando.id, data); } else { onAdd({ ...data, solicitante: session.name, setor: session.setor }); }
+          onSubmit={lista => {
+            if (editando) { onEdit(editando.id, lista[0]); } else { onAdd(lista.map(data => ({ ...data, solicitante: session.name, setor: session.setor }))); }
             fecharFormulario();
           }}
         />
@@ -829,8 +906,8 @@ function RequesterView({ session, requests, config, onLogout, onRefresh, onAdd, 
         <FormReuniao
           initial={editando}
           onCancel={fecharFormulario}
-          onSubmit={data => {
-            if (editando) { onEdit(editando.id, data); } else { onAdd({ ...data, solicitante: session.name, setor: session.setor }); }
+          onSubmit={lista => {
+            if (editando) { onEdit(editando.id, lista[0]); } else { onAdd(lista.map(data => ({ ...data, solicitante: session.name, setor: session.setor }))); }
             fecharFormulario();
           }}
         />
@@ -909,6 +986,7 @@ function PainelListaDeCompras({ titulo, subtitulo, itens, destaque, onPurchase }
 function TabelaCompras({ items, somenteLeitura, onApprove, onReject, onPurchase, onDeliver, onDelete }) {
   const [rejeitando, setRejeitando] = useState(null);
   const [obs, setObs] = useState('');
+  const [detalhando, setDetalhando] = useState(null);
 
   if (items.length === 0) return <div className="coap-empty">Nenhuma solicitação encontrada com esse filtro.</div>;
 
@@ -918,7 +996,7 @@ function TabelaCompras({ items, somenteLeitura, onApprove, onReject, onPurchase,
         <thead>
           <tr>
             <th>Solicitante</th><th>Setor</th><th>Material</th><th>Qtd.</th><th>Atividade</th>
-            <th>Data limite</th><th>Prioridade</th><th>Situação</th>{!somenteLeitura && <th>Ações</th>}
+            <th>Data limite</th><th>Prioridade</th><th>Situação</th><th></th>{!somenteLeitura && <th>Ações</th>}
           </tr>
         </thead>
         <tbody>
@@ -927,12 +1005,15 @@ function TabelaCompras({ items, somenteLeitura, onApprove, onReject, onPurchase,
               <tr>
                 <td data-label="Solicitante">{r.solicitante}</td>
                 <td data-label="Setor">{r.setor}</td>
-                <td data-label="Material">{r.material}{r.link && <> · <a className="coap-link" href={r.link} target="_blank" rel="noreferrer"><ExternalLink size={11} /> link</a></>}</td>
+                <td data-label="Material">{r.material}{r.grupoTotal > 1 && <span className="coap-obs"> ({r.grupoIndex}/{r.grupoTotal})</span>}</td>
                 <td data-label="Qtd.">{r.quantidade}</td>
                 <td data-label="Atividade">{r.atividadeProjeto}</td>
                 <td data-label="Data limite">{formatDateBR(r.dataLimite)}</td>
-                <td data-label="Prioridade"><PrioridadeBadge dataLimite={r.dataLimite} />{r.motivoUrgencia && <div className="coap-obs">Motivo: {r.motivoUrgencia}</div>}</td>
-                <td data-label="Situação"><StatusBadge status={r.status} />{r.observacaoAdmin && <div className="coap-obs">{r.observacaoAdmin}</div>}</td>
+                <td data-label="Prioridade"><PrioridadeBadge dataLimite={r.dataLimite} /></td>
+                <td data-label="Situação"><StatusBadge status={r.status} /></td>
+                <td data-label="">
+                  <button className="coap-mini-btn" onClick={() => setDetalhando(r)}><Eye size={12} /> Detalhes</button>
+                </td>
                 {!somenteLeitura && (
                   <td data-label="Ações">
                     <div className="coap-actions-cell">
@@ -949,7 +1030,7 @@ function TabelaCompras({ items, somenteLeitura, onApprove, onReject, onPurchase,
               </tr>
               {rejeitando === r.id && (
                 <tr>
-                  <td colSpan={9}>
+                  <td colSpan={10}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0' }}>
                       <input placeholder="Motivo da reprovação" value={obs} onChange={e => setObs(e.target.value)} style={{ flex: 1, padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} />
                       <button className="coap-mini-btn reject" onClick={() => { onReject(r.id, obs); setRejeitando(null); setObs(''); }}>Confirmar</button>
@@ -962,6 +1043,7 @@ function TabelaCompras({ items, somenteLeitura, onApprove, onReject, onPurchase,
           ))}
         </tbody>
       </table>
+      {detalhando && <DetalhesModal request={detalhando} onClose={() => setDetalhando(null)} />}
     </div>
   );
 }
@@ -969,6 +1051,7 @@ function TabelaCompras({ items, somenteLeitura, onApprove, onReject, onPurchase,
 function TabelaReunioes({ items, somenteLeitura, onApprove, onReject, onPurchase, onDeliver, onDelete }) {
   const [rejeitando, setRejeitando] = useState(null);
   const [obs, setObs] = useState('');
+  const [detalhando, setDetalhando] = useState(null);
 
   if (items.length === 0) return <div className="coap-empty">Nenhuma reunião ou capacitação encontrada.</div>;
 
@@ -978,7 +1061,7 @@ function TabelaReunioes({ items, somenteLeitura, onApprove, onReject, onPurchase
         <thead>
           <tr>
             <th>Solicitante</th><th>Setor</th><th>Assunto</th><th>Data / horário</th>
-            <th>Participantes</th><th>Cardápio sugerido</th><th>Prazo</th><th>Situação</th>{!somenteLeitura && <th>Ações</th>}
+            <th>Participantes</th><th>Cardápio sugerido</th><th>Prazo</th><th>Situação</th><th></th>{!somenteLeitura && <th>Ações</th>}
           </tr>
         </thead>
         <tbody>
@@ -992,7 +1075,10 @@ function TabelaReunioes({ items, somenteLeitura, onApprove, onReject, onPurchase
                 <td data-label="Participantes">{r.participantes}</td>
                 <td data-label="Cardápio sugerido" style={{ maxWidth: 200 }}>{r.cardapioSugestao || '—'}</td>
                 <td data-label="Prazo"><EventoBadge dataHorario={r.dataHorario} /></td>
-                <td data-label="Situação"><StatusBadge status={r.status} />{r.observacaoAdmin && <div className="coap-obs">{r.observacaoAdmin}</div>}</td>
+                <td data-label="Situação"><StatusBadge status={r.status} /></td>
+                <td data-label="">
+                  <button className="coap-mini-btn" onClick={() => setDetalhando(r)}><Eye size={12} /> Detalhes</button>
+                </td>
                 {!somenteLeitura && (
                   <td data-label="Ações">
                     <div className="coap-actions-cell">
@@ -1009,7 +1095,7 @@ function TabelaReunioes({ items, somenteLeitura, onApprove, onReject, onPurchase
               </tr>
               {rejeitando === r.id && (
                 <tr>
-                  <td colSpan={9}>
+                  <td colSpan={10}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0' }}>
                       <input placeholder="Motivo da reprovação" value={obs} onChange={e => setObs(e.target.value)} style={{ flex: 1, padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} />
                       <button className="coap-mini-btn reject" onClick={() => { onReject(r.id, obs); setRejeitando(null); setObs(''); }}>Confirmar</button>
@@ -1022,14 +1108,18 @@ function TabelaReunioes({ items, somenteLeitura, onApprove, onReject, onPurchase
           ))}
         </tbody>
       </table>
+      {detalhando && <DetalhesModal request={detalhando} onClose={() => setDetalhando(null)} />}
     </div>
   );
 }
 
 /* ---------- painel de configurações (admin) ---------- */
 
-function PainelConfig({ users, config, onChangeUserPin, onChangeConfigPin }) {
+function PainelConfig({ users, config, onChangeUserPin, onChangeUserSetor, onAddUser, onRemoveUser, onChangeConfigPin }) {
   const [pins, setPins] = useState({});
+  const [setores, setSetores] = useState({});
+  const [novoNome, setNovoNome] = useState('');
+  const [novoSetor, setNovoSetor] = useState('');
   const [adminPin, setAdminPin] = useState('');
   const [diretorPin, setDiretorPin] = useState('');
   const [assistentePin, setAssistentePin] = useState('');
@@ -1037,15 +1127,26 @@ function PainelConfig({ users, config, onChangeUserPin, onChangeConfigPin }) {
   return (
     <div className="coap-panel">
       <div className="coap-settings-block">
-        <h3>PINs dos solicitantes</h3>
+        <h3>Solicitantes</h3>
         {users.map(u => (
           <div className="coap-user-row" key={u.name}>
             <span className="name">{u.name}</span>
-            <span className="setor">{u.setor}</span>
+            <input
+              value={setores[u.name] ?? u.setor}
+              onChange={e => setSetores({ ...setores, [u.name]: e.target.value })}
+              onBlur={() => { if ((setores[u.name] ?? u.setor) !== u.setor) onChangeUserSetor(u.name, setores[u.name]); }}
+              style={{ flex: 1, minWidth: 110, padding: 5, border: '1px solid var(--border)', borderRadius: 6 }}
+            />
             <input placeholder="novo PIN" value={pins[u.name] || ''} onChange={e => setPins({ ...pins, [u.name]: e.target.value })} />
-            <button className="coap-mini-btn" disabled={!pins[u.name]} onClick={() => { onChangeUserPin(u.name, pins[u.name]); setPins({ ...pins, [u.name]: '' }); }}>Salvar</button>
+            <button className="coap-mini-btn" disabled={!pins[u.name]} onClick={() => { onChangeUserPin(u.name, pins[u.name]); setPins({ ...pins, [u.name]: '' }); }}>Salvar PIN</button>
+            <button className="coap-mini-btn reject" onClick={() => onRemoveUser(u.name)}><X size={12} /> Excluir</button>
           </div>
         ))}
+        <div className="coap-user-row" style={{ marginTop: 10, borderBottom: 'none' }}>
+          <input placeholder="Nome do novo solicitante" value={novoNome} onChange={e => setNovoNome(e.target.value)} style={{ flex: 1, minWidth: 140, padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} />
+          <input placeholder="Setor" value={novoSetor} onChange={e => setNovoSetor(e.target.value)} style={{ flex: 1, minWidth: 110, padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} />
+          <button className="coap-btn accent" disabled={!novoNome.trim() || !novoSetor.trim()} onClick={() => { onAddUser(novoNome, novoSetor); setNovoNome(''); setNovoSetor(''); }}><Plus size={14} /> Adicionar</button>
+        </div>
       </div>
       <div className="coap-settings-block">
         <h3>PIN do administrador</h3>
@@ -1324,7 +1425,7 @@ function PainelGestao({ session, requests, users, config, onLogout, onRefresh, a
       )}
 
       {aba === 'config' && !somenteLeitura && (
-        <PainelConfig users={users} config={config} onChangeUserPin={actions.changeUserPin} onChangeConfigPin={actions.changeConfigPin} />
+        <PainelConfig users={users} config={config} onChangeUserPin={actions.changeUserPin} onChangeUserSetor={actions.changeUserSetor} onAddUser={actions.addUser} onRemoveUser={actions.removeUser} onChangeConfigPin={actions.changeConfigPin} />
       )}
     </div>
   );
@@ -1345,7 +1446,17 @@ export default function App() {
   async function init() {
     setLoading(true);
     let u = await loadShared('coap-users');
-    if (!u) { u = SEED_USERS; await saveShared('coap-users', u); }
+    if (!u) {
+      u = SEED_USERS;
+      await saveShared('coap-users', u);
+    } else {
+      const existentes = new Set(u.map(x => x.name));
+      const faltando = SEED_USERS.filter(s => !existentes.has(s.name));
+      if (faltando.length > 0) {
+        u = [...u, ...faltando];
+        await saveShared('coap-users', u);
+      }
+    }
     let c = await loadShared('coap-config');
     if (!c) { c = DEFAULT_CONFIG; await saveShared('coap-config', c); }
     let r = await loadShared('coap-requests');
@@ -1389,13 +1500,14 @@ export default function App() {
   }
   function logout() { setSession(null); }
 
-  function addRequest(data) {
-    const req = {
-      id: uid(), criadoEm: new Date().toISOString(), ciclo: config.cicloAtual,
+  function addRequest(dataList) {
+    const now = new Date().toISOString();
+    const novos = dataList.map(data => ({
+      id: uid(), criadoEm: now, ciclo: config.cicloAtual,
       status: 'pendente', observacaoAdmin: '', ...data,
-    };
-    persistRequests([...requests, req]);
-    showToast('Solicitação enviada');
+    }));
+    persistRequests([...requests, ...novos]);
+    showToast(novos.length > 1 ? `${novos.length} itens enviados` : 'Solicitação enviada');
   }
 
   function editOwnRequest(id, data) {
@@ -1428,6 +1540,19 @@ export default function App() {
       showToast('Novo ciclo iniciado');
     },
     changeUserPin: (name, pin) => { persistUsers(users.map(u => (u.name === name ? { ...u, pin } : u))); showToast('PIN atualizado'); },
+    changeUserSetor: (name, setor) => { persistUsers(users.map(u => (u.name === name ? { ...u, setor } : u))); showToast('Setor atualizado'); },
+    addUser: (name, setor) => {
+      const nomeLimpo = name.trim();
+      if (!nomeLimpo || !setor.trim()) return;
+      if (users.some(u => u.name.toLowerCase() === nomeLimpo.toLowerCase())) { showToast('Já existe um solicitante com esse nome'); return; }
+      persistUsers([...users, { name: nomeLimpo, setor: setor.trim(), pin: '0000' }]);
+      showToast('Solicitante adicionado');
+    },
+    removeUser: name => {
+      if (!window.confirm(`Excluir "${name}" da lista de solicitantes? O histórico de pedidos dele(a) continua registrado, mas ele(a) não poderá mais entrar no sistema.`)) return;
+      persistUsers(users.filter(u => u.name !== name));
+      showToast('Solicitante excluído');
+    },
     changeConfigPin: (field, pin) => { persistConfig({ ...config, [field]: pin }); showToast('PIN atualizado'); },
   };
 
