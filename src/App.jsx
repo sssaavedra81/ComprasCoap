@@ -356,14 +356,31 @@ function GlobalStyle() {
 
       /* checklist do modo compras */
       .coap-check-list { display: flex; flex-direction: column; }
-      .coap-check-item { display: flex; align-items: center; gap: 14px; padding: 13px 8px; border-bottom: 1px solid var(--border); cursor: pointer; }
+      .coap-check-item { display: flex; align-items: flex-start; gap: 14px; padding: 14px 8px; border-bottom: 1px solid var(--border); cursor: pointer; }
       .coap-check-item:last-child { border-bottom: none; }
-      .coap-check-item input[type="checkbox"] { width: 25px; height: 25px; accent-color: var(--primary); flex-shrink: 0; cursor: pointer; }
-      .coap-check-info { display: flex; flex-direction: column; gap: 2px; }
+      .coap-check-item input[type="checkbox"] { width: 25px; height: 25px; accent-color: var(--primary); flex-shrink: 0; cursor: pointer; margin-top: 2px; }
+      .coap-check-info { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
       .coap-check-info strong { font-size: 15px; }
-      .coap-check-info span { font-size: 12.5px; color: var(--ink-soft); display: flex; align-items: center; gap: 4px; }
+      .coap-check-info span { font-size: 12.5px; color: var(--ink-soft); }
+      .coap-check-atividade { color: var(--primary) !important; font-weight: 600; }
+      .coap-check-group { margin-bottom: 18px; }
+      .coap-check-group:last-child { margin-bottom: 0; }
+      .coap-check-group-title {
+        font-size: 12px; font-weight: 700; color: var(--primary); text-transform: uppercase;
+        letter-spacing: .04em; padding: 6px 10px; background: var(--primary-soft);
+        border-radius: 6px; margin-bottom: 4px;
+      }
+      .coap-check-obs { font-style: italic; }
+      .coap-check-link {
+        display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+        margin-top: 5px; padding: 6px 11px; border-radius: 7px;
+        background: var(--accent-soft); color: var(--accent-dark);
+        font-size: 12.5px; font-weight: 600; text-decoration: none;
+      }
+      .coap-check-link:hover { background: var(--accent); color: var(--primary-dark); }
       .coap-check-item.checked { background: var(--surface-alt); border-radius: 8px; }
       .coap-check-item.checked .coap-check-info strong, .coap-check-item.checked .coap-check-info span { text-decoration: line-through; color: var(--ink-soft); }
+      .coap-check-item.checked .coap-check-atividade { color: var(--ink-soft) !important; }
 
       /* filtros */
       .coap-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 10px 14px; margin-bottom: 16px; }
@@ -1236,22 +1253,38 @@ function ModoCompras({ itens, wedAtual, onTogglePurchased, onClose, closeLabel, 
 
       {itens.length === 0 && <div className="coap-panel coap-empty">Nada aprovado para essa data ainda.</div>}
 
-      {setores.map(setor => (
-        <div className="coap-panel" key={setor}>
-          <h2>{setor}</h2>
-          <div className="coap-check-list">
-            {porSetor[setor].map(r => (
-              <label className={`coap-check-item ${r.status === 'comprada' ? 'checked' : ''}`} key={r.id}>
-                <input type="checkbox" checked={r.status === 'comprada'} onChange={() => onTogglePurchased(r)} />
-                <div className="coap-check-info">
-                  <strong>{r.material} — {r.quantidade}</strong>
-                  <span>{r.solicitante}{r.link && <> · <a className="coap-link" href={r.link} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}><ExternalLink size={11} /> link</a></>}</span>
+      {setores.map(setor => {
+        const porAtividade = {};
+        porSetor[setor].forEach(r => { (porAtividade[r.atividadeProjeto] = porAtividade[r.atividadeProjeto] || []).push(r); });
+        const atividades = Object.keys(porAtividade).sort();
+        return (
+          <div className="coap-panel" key={setor}>
+            <h2>{setor}</h2>
+            {atividades.map(atividade => (
+              <div key={atividade} className="coap-check-group">
+                <div className="coap-check-group-title">{atividade}</div>
+                <div className="coap-check-list">
+                  {porAtividade[atividade].map(r => (
+                    <label className={`coap-check-item ${r.status === 'comprada' ? 'checked' : ''}`} key={r.id}>
+                      <input type="checkbox" checked={r.status === 'comprada'} onChange={() => onTogglePurchased(r)} />
+                      <div className="coap-check-info">
+                        <strong>{r.material} — {r.quantidade}</strong>
+                        <span>Pedido por {r.solicitante} · precisa até {formatDateBR(r.dataLimite)}</span>
+                        {r.observacoesSolicitante && <span className="coap-check-obs">Obs.: {r.observacoesSolicitante}</span>}
+                        {r.link && (
+                          <a className="coap-check-link" href={r.link} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>
+                            <ExternalLink size={13} /> Abrir link de compra
+                          </a>
+                        )}
+                      </div>
+                    </label>
+                  ))}
                 </div>
-              </label>
+              </div>
             ))}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
