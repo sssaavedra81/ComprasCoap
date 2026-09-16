@@ -56,7 +56,7 @@ const PRIORIDADE_CLASS = {
 
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
-const APP_VERSION = '1.2';
+const APP_VERSION = '1.3';
 const APP_DEVELOPER = 'Daniel Saavedra';
 
 /* ---------- utilitários ---------- */
@@ -237,7 +237,7 @@ function GlobalStyle() {
         font-size: 14px;
         color: var(--ink);
       }
-      .coap-shell { max-width: 1100px; margin: 0 auto; padding: 20px 18px 60px; }
+      .coap-shell { max-width: 1600px; margin: 0 auto; padding: 20px 28px 60px; }
 
       /* topo */
       .coap-topbar {
@@ -417,6 +417,7 @@ function GlobalStyle() {
       .coap-mini-btn {
         border: 1px solid var(--border); background: var(--surface); color: var(--ink);
         padding: 5px 10px; font-size: 12px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; font-weight: 500;
+        white-space: nowrap;
       }
       .coap-mini-btn:hover { background: var(--surface-alt); }
       .coap-mini-btn.approve { border-color: var(--primary); color: var(--primary); }
@@ -468,6 +469,7 @@ function GlobalStyle() {
       .coap-user-row input { width: 70px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 6px; }
 
       @media (max-width: 560px) {
+        .coap-shell { padding: 20px 14px 60px; }
         .coap-stat { min-width: 45%; }
         .coap-who { width: 100%; justify-content: space-between; }
         .coap-logo { height: 36px; }
@@ -551,7 +553,7 @@ function LoginScreen({ users, onLoginSolicitante, onLoginAdmin, onLoginDiretor, 
                 <label>Seu nome</label>
                 <select value={nome} onChange={e => setNome(e.target.value)}>
                   <option value="">Selecione…</option>
-                  {users.map(u => <option key={u.name} value={u.name}>{u.name} — {u.setor}</option>)}
+                  {[...users].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map(u => <option key={u.name} value={u.name}>{u.name} — {u.setor}</option>)}
                 </select>
               </div>
             )}
@@ -1145,7 +1147,7 @@ function PainelConfig({ users, config, onChangeUserPin, onChangeUserSetor, onAdd
     <div className="coap-panel">
       <div className="coap-settings-block">
         <h3>Solicitantes</h3>
-        {users.map(u => (
+        {[...users].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map(u => (
           <div className="coap-user-row" key={u.name}>
             <span className="name">{u.name}</span>
             <input
@@ -1312,8 +1314,8 @@ function PainelGestao({ session, requests, users, config, onLogout, onRefresh, a
   const [filtros, setFiltros] = useState({ setor: '', solicitante: '', status: '' });
   const [modoCompras, setModoCompras] = useState(false);
 
-  const setores = [...new Set(users.map(u => u.setor))];
-  const solicitantes = [...new Set(users.map(u => u.name))];
+  const setores = [...new Set(users.map(u => u.setor))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const solicitantes = [...new Set(users.map(u => u.name))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
   const comprasCiclo = requests.filter(r => r.tipo === 'compra' && r.ciclo === config.cicloAtual);
   const reunioesCiclo = requests.filter(r => r.tipo === 'reuniao' && r.ciclo === config.cicloAtual);
