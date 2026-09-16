@@ -56,7 +56,7 @@ const PRIORIDADE_CLASS = {
 
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
-const APP_VERSION = '1.3';
+const APP_VERSION = '1.4';
 const APP_DEVELOPER = 'Daniel Saavedra';
 
 /* ---------- utilitários ---------- */
@@ -281,6 +281,7 @@ function GlobalStyle() {
         border-color: var(--primary); background: var(--surface);
       }
       .coap-field textarea { resize: vertical; min-height: 64px; }
+      .coap-item-hint { font-size: 12px; color: var(--ink-soft); background: var(--surface-alt); padding: 9px 12px; border-radius: 8px; margin-bottom: 14px; }
       .coap-item-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
       .coap-item-row-fields { display: flex; gap: 8px; flex: 1; flex-wrap: wrap; }
       .coap-item-row-fields input { flex: 1; min-width: 110px; padding: 9px 10px; background: var(--surface-alt); border: 1.5px solid transparent; border-radius: 8px; outline: none; }
@@ -371,9 +372,10 @@ function GlobalStyle() {
         border-radius: 6px; margin-bottom: 4px;
       }
       .coap-check-obs { font-style: italic; }
+      .coap-check-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 5px; }
       .coap-check-link {
         display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
-        margin-top: 5px; padding: 6px 11px; border-radius: 7px;
+        padding: 6px 11px; border-radius: 7px;
         background: var(--accent-soft); color: var(--accent-dark);
         font-size: 12.5px; font-weight: 600; text-decoration: none;
       }
@@ -381,6 +383,8 @@ function GlobalStyle() {
       .coap-check-item.checked { background: var(--surface-alt); border-radius: 8px; }
       .coap-check-item.checked .coap-check-info strong, .coap-check-item.checked .coap-check-info span { text-decoration: line-through; color: var(--ink-soft); }
       .coap-check-item.checked .coap-check-atividade { color: var(--ink-soft) !important; }
+      .coap-check-item.readonly { cursor: default; }
+      .coap-check-item.readonly input[type="checkbox"] { cursor: default; }
 
       /* filtros */
       .coap-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 10px 14px; margin-bottom: 16px; }
@@ -657,10 +661,12 @@ function FormCompra({ onCancel, onSubmit, initial }) {
           <p className="coap-modal-sub">Data limite e atividade valem para todos os itens abaixo. Cada item vira uma solicitação própria, aparecendo separado na lista de compras.</p>
         )}
 
+        <p className="coap-item-hint">Seja específico no material: inclua cor, tamanho ou modelo quando fizer diferença (ex.: "bexiga vermelha nº 9", "papel A4 180g" — não só "bexiga" ou "papel").</p>
+
         {itens.map((it, idx) => (
           <div className="coap-item-row" key={idx}>
             <div className="coap-item-row-fields">
-              <input placeholder="Material solicitado" value={it.material} onChange={e => atualizarItem(idx, 'material', e.target.value)} required />
+              <input placeholder="Material solicitado (com cor/tamanho, se for o caso)" value={it.material} onChange={e => atualizarItem(idx, 'material', e.target.value)} required />
               <input placeholder="Quantidade" type="number" min="1" value={it.quantidade} onChange={e => atualizarItem(idx, 'quantidade', e.target.value)} required />
               <input placeholder="Link (opcional)" value={it.link} onChange={e => atualizarItem(idx, 'link', e.target.value)} />
             </div>
@@ -687,8 +693,8 @@ function FormCompra({ onCancel, onSubmit, initial }) {
           </div>
         )}
         <div className="coap-field">
-          <label>Observações (opcional)</label>
-          <textarea value={observacoesSolicitante} onChange={e => setObservacoesSolicitante(e.target.value)} />
+          <label>Observações (opcional — só se for realmente necessário)</label>
+          <input maxLength={140} placeholder="Uma frase curta, no máximo" value={observacoesSolicitante} onChange={e => setObservacoesSolicitante(e.target.value)} />
         </div>
         <button className="coap-btn accent" type="submit" disabled={!podeEnviar}><Check size={15} /> {initial ? 'Salvar alterações' : itens.length > 1 ? `Enviar ${itens.length} itens` : 'Enviar solicitação'}</button>
       </form>
@@ -737,8 +743,8 @@ function FormReuniao({ onCancel, onSubmit, initial }) {
           <textarea value={cardapioSugestao} onChange={e => setCardapioSugestao(e.target.value)} />
         </div>
         <div className="coap-field">
-          <label>Observações (opcional)</label>
-          <textarea value={observacoesSolicitante} onChange={e => setObservacoesSolicitante(e.target.value)} />
+          <label>Observações (opcional — só se for realmente necessário)</label>
+          <input maxLength={140} placeholder="Uma frase curta, no máximo" value={observacoesSolicitante} onChange={e => setObservacoesSolicitante(e.target.value)} />
         </div>
         <button className="coap-btn accent" type="submit"><Check size={15} /> {initial ? 'Salvar alterações' : 'Enviar solicitação'}</button>
       </form>
@@ -1234,11 +1240,19 @@ function aplicaFiltros(items, filtros) {
 
 /* ---------- tela de compras (modo checklist) ---------- */
 
-function ModoCompras({ itens, wedAtual, onTogglePurchased, onClose, closeLabel, onRefresh }) {
+function ModoCompras({ itens, wedAtual, onTogglePurchased, onPostpone, onEncerrar, onClose, closeLabel, onRefresh, somenteLeitura }) {
   const porSetor = {};
   itens.forEach(r => { (porSetor[r.setor] = porSetor[r.setor] || []).push(r); });
   const setores = Object.keys(porSetor).sort();
   const compradosCount = itens.filter(r => r.status === 'comprada').length;
+  const pendentesCount = itens.length - compradosCount;
+
+  function ordenar(lista) {
+    return [...lista].sort((a, b) => {
+      if (a.status === b.status) return a.material.localeCompare(b.material, 'pt-BR');
+      return a.status === 'comprada' ? 1 : -1;
+    });
+  }
 
   return (
     <div className="coap-shell">
@@ -1249,9 +1263,14 @@ function ModoCompras({ itens, wedAtual, onTogglePurchased, onClose, closeLabel, 
         </div>
         <div className="coap-who">
           {onRefresh && <button className="coap-iconbtn" onClick={onRefresh}><RefreshCw size={13} /> Atualizar</button>}
+          {!somenteLeitura && onEncerrar && (
+            <button className="coap-iconbtn" onClick={() => onEncerrar(pendentesCount)}><Archive size={13} /> Encerrar lista de compras</button>
+          )}
           <button className="coap-iconbtn" onClick={onClose}><ChevronLeft size={13} /> {closeLabel || 'Voltar ao painel'}</button>
         </div>
       </div>
+
+      {somenteLeitura && <div className="coap-info-banner"><Eye size={16} /><span>Você está vendo a lista em modo consulta — só a administração ou a assistente de compras podem marcar itens.</span></div>}
 
       {itens.length === 0 && <div className="coap-panel coap-empty">Nada aprovado para essa data ainda.</div>}
 
@@ -1266,18 +1285,25 @@ function ModoCompras({ itens, wedAtual, onTogglePurchased, onClose, closeLabel, 
               <div key={atividade} className="coap-check-group">
                 <div className="coap-check-group-title">{atividade}</div>
                 <div className="coap-check-list">
-                  {porAtividade[atividade].map(r => (
-                    <label className={`coap-check-item ${r.status === 'comprada' ? 'checked' : ''}`} key={r.id}>
-                      <input type="checkbox" checked={r.status === 'comprada'} onChange={() => onTogglePurchased(r)} />
+                  {ordenar(porAtividade[atividade]).map(r => (
+                    <label className={`coap-check-item ${r.status === 'comprada' ? 'checked' : ''} ${somenteLeitura ? 'readonly' : ''}`} key={r.id}>
+                      <input type="checkbox" checked={r.status === 'comprada'} disabled={somenteLeitura} onChange={() => !somenteLeitura && onTogglePurchased(r)} />
                       <div className="coap-check-info">
-                        <strong>{r.material} — {r.quantidade}</strong>
+                        <strong>{r.material} — Qtd: {r.quantidade}</strong>
                         <span>Pedido por {r.solicitante} · precisa até {formatDateBR(r.dataLimite)}</span>
                         {r.observacoesSolicitante && <span className="coap-check-obs">Obs.: {r.observacoesSolicitante}</span>}
-                        {r.link && (
-                          <a className="coap-check-link" href={r.link} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>
-                            <ExternalLink size={13} /> Abrir link de compra
-                          </a>
-                        )}
+                        <div className="coap-check-actions">
+                          {r.link && (
+                            <a className="coap-check-link" href={r.link} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>
+                              <ExternalLink size={13} /> Abrir link de compra
+                            </a>
+                          )}
+                          {!somenteLeitura && r.status !== 'comprada' && onPostpone && (
+                            <button type="button" className="coap-mini-btn" onClick={e => { e.preventDefault(); e.stopPropagation(); onPostpone(r); }}>
+                              <Archive size={12} /> Adiar para próxima lista
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </label>
                   ))}
@@ -1300,6 +1326,8 @@ function AssistenteView({ requests, config, actions, onLogout, onRefresh }) {
       itens={itens}
       wedAtual={wedAtual}
       onTogglePurchased={r => (r.status === 'comprada' ? actions.revertPurchase(r.id) : actions.purchase(r.id))}
+      onPostpone={r => actions.postponeItem(r.id, r.quartaAlvo)}
+      onEncerrar={pendentesCount => actions.encerrarListaCompras(pendentesCount)}
       onClose={onLogout}
       closeLabel="Sair"
       onRefresh={onRefresh}
@@ -1345,7 +1373,11 @@ function PainelGestao({ session, requests, users, config, onLogout, onRefresh, a
         itens={itensModoCompras}
         wedAtual={wedAtual}
         onTogglePurchased={r => (r.status === 'comprada' ? actions.revertPurchase(r.id) : actions.purchase(r.id))}
+        onPostpone={somenteLeitura ? null : r => actions.postponeItem(r.id, r.quartaAlvo)}
+        onEncerrar={somenteLeitura ? null : pendentesCount => actions.encerrarListaCompras(pendentesCount)}
         onClose={() => setModoCompras(false)}
+        onRefresh={onRefresh}
+        somenteLeitura={somenteLeitura}
       />
     );
   }
@@ -1360,7 +1392,7 @@ function PainelGestao({ session, requests, users, config, onLogout, onRefresh, a
         <div className="coap-who">
           <span><b>{somenteLeitura ? 'Diretor' : 'Administrador'}</b></span>
           <button className="coap-iconbtn" onClick={onRefresh}><RefreshCw size={13} /> Atualizar</button>
-          {!somenteLeitura && <button className="coap-iconbtn" onClick={() => setModoCompras(true)}><ShoppingCart size={13} /> Lista de compras</button>}
+          <button className="coap-iconbtn" onClick={() => setModoCompras(true)}><ShoppingCart size={13} /> Lista de compras</button>
           {!somenteLeitura && <button className="coap-iconbtn" onClick={actions.encerrarCiclo}><Archive size={13} /> Encerrar ciclo</button>}
           <button className="coap-iconbtn" onClick={onLogout}><LogOut size={13} /> Sair</button>
         </div>
@@ -1565,6 +1597,24 @@ export default function App() {
     purchase: id => updateRequest(id, { status: 'comprada', compradoEm: new Date().toISOString() }),
     revertPurchase: id => updateRequest(id, { status: 'aprovada', compradoEm: null }),
     deliver: id => updateRequest(id, { status: 'entregue', entregueEm: new Date().toISOString() }),
+    postponeItem: (id, quartaAlvoAtual) => {
+      const proxima = new Date(quartaAlvoAtual + 'T00:00:00');
+      proxima.setDate(proxima.getDate() + 7);
+      updateRequest(id, { quartaAlvo: toISODate(proxima) });
+      showToast(`Item remanejado para quarta-feira, ${formatDateLongBR(proxima)}`);
+    },
+    encerrarListaCompras: pendentesCount => {
+      if (pendentesCount === 0) { showToast('Não há itens pendentes para remanejar'); return; }
+      if (!window.confirm(`Encerrar a lista de hoje? ${pendentesCount} item(ns) ainda não marcado(s) como comprado serão remanejados automaticamente para a próxima lista de compras. Confirmar?`)) return;
+      const { wedAtual, itens } = itensParaComprarNestaQuarta(requests, config.cicloAtual);
+      const wedAtualISO = toISODate(wedAtual);
+      const proxima = new Date(wedAtual);
+      proxima.setDate(wedAtual.getDate() + 7);
+      const proximaISO = toISODate(proxima);
+      const idsRemanejar = new Set(itens.filter(r => r.status === 'aprovada' && r.quartaAlvo === wedAtualISO).map(r => r.id));
+      persistRequests(requests.map(r => (idsRemanejar.has(r.id) ? { ...r, quartaAlvo: proximaISO } : r)));
+      showToast('Lista encerrada — pendentes remanejados para a próxima semana');
+    },
     remove: (id, descricao) => {
       if (!window.confirm(`Excluir definitivamente "${descricao}"? Essa ação não pode ser desfeita.`)) return;
       deleteRequest(id);
