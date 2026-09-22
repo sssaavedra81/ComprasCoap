@@ -56,7 +56,7 @@ const PRIORIDADE_CLASS = {
 
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
-const APP_VERSION = '1.4';
+const APP_VERSION = '1.5';
 const APP_DEVELOPER = 'Daniel Saavedra';
 
 /* ---------- utilitários ---------- */
@@ -187,6 +187,44 @@ async function saveShared(key, value) {
     return res.ok;
   } catch (e) {
     console.error('erro ao salvar', key, e);
+    return false;
+  }
+}
+
+/* Cada solicitação vive na sua própria chave (req:<id>), assim salvar uma
+   nunca sobrescreve as outras — mesmo que várias pessoas salvem ao mesmo tempo. */
+
+async function loadAllRequests() {
+  try {
+    const res = await fetch('/api/data?prefix=req:');
+    if (!res.ok) return null;
+    const mapa = await res.json();
+    return Object.values(mapa).map(v => JSON.parse(v));
+  } catch (e) {
+    return null;
+  }
+}
+
+async function saveRequestItem(item) {
+  try {
+    const res = await fetch(`/api/data?key=${encodeURIComponent('req:' + item.id)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(item),
+    });
+    return res.ok;
+  } catch (e) {
+    console.error('erro ao salvar solicitação', item.id, e);
+    return false;
+  }
+}
+
+async function deleteRequestItem(id) {
+  try {
+    await fetch(`/api/data?key=${encodeURIComponent('req:' + id)}`, { method: 'DELETE' });
+    return true;
+  } catch (e) {
+    console.error('erro ao excluir solicitação', id, e);
     return false;
   }
 }
@@ -1526,8 +1564,19 @@ export default function App() {
     }
     let c = await loadShared('coap-config');
     if (!c) { c = DEFAULT_CONFIG; await saveShared('coap-config', c); }
-    let r = await loadShared('coap-requests');
-    if (!r) { r = []; await saveShared('coap-requests', r); }
+
+    let r = await loadAllRequests();
+    if (r === null) r = [];
+    if (r.length === 0) {
+      // Migração única: se ainda existirem solicitações guardadas no formato antigo
+      // (um arquivo único), traz cada uma para sua própria chave.
+      const legado = await loadShared('coap-requests');
+      if (legado && legado.length > 0) {
+        await Promise.all(legado.map(item => saveRequestItem(item)));
+        r = legado;
+      }
+    }
+
     setUsers(u); setConfig(c); setRequests(r);
     setLoading(false);
   }
@@ -1535,7 +1584,7 @@ export default function App() {
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2500); }
 
   async function refreshAll() {
-    const r = await loadShared('coap-requests');
+    const r = await loadAllRequests();
     if (r) setRequests(r);
     const u = await loadShared('coap-users');
     if (u) setUsers(u);
@@ -1544,7 +1593,23 @@ export default function App() {
     showToast('Dados atualizados');
   }
 
-  async function persistRequests(next) { setRequests(next); await saveShared('coap-requests', next); }
+  function persistNewRequests(novos) {
+    setRequests(prevAtuais => [...prevAtuais, ...novos]);
+    novos.forEach(item => saveRequestItem(item));
+  }
+  function persistUpdatedRequest(id, patch) {
+    setRequests(prevAtuais => {
+      const atual = prevAtuais.find(r => r.id === id);
+      if (!atual) return prevAtuais;
+      const atualizado = { ...atual, ...patch };
+      saveRequestItem(atualizado);
+      return prevAtuais.map(r => (r.id === id ? atualizado : r));
+    });
+  }
+  function persistDeletedRequest(id) {
+    setRequests(prevAtuais => prevAtuais.filter(r => r.id !== id));
+    deleteRequestItem(id);
+  }
   async function persistUsers(next) { setUsers(next); await saveShared('coap-users', next); }
   async function persistConfig(next) { setConfig(next); await saveShared('coap-config', next); }
 
@@ -1573,21 +1638,21 @@ export default function App() {
       id: uid(), criadoEm: now, ciclo: config.cicloAtual,
       status: 'pendente', observacaoAdmin: '', ...data,
     }));
-    persistRequests([...requests, ...novos]);
+    persistNewRequests(novos);
     showToast(novos.length > 1 ? `${novos.length} itens enviados` : 'Solicitação enviada');
   }
 
   function editOwnRequest(id, data) {
-    persistRequests(requests.map(r => (r.id === id ? { ...r, ...data } : r)));
+    persistUpdatedRequest(id, data);
     showToast('Solicitação atualizada');
   }
 
   function updateRequest(id, patch) {
-    persistRequests(requests.map(r => (r.id === id ? { ...r, ...patch } : r)));
+    persistUpdatedRequest(id, patch);
   }
 
   function deleteRequest(id) {
-    persistRequests(requests.filter(r => r.id !== id));
+    persistDeletedRequest(id);
     showToast('Solicitação excluída');
   }
 
@@ -1611,8 +1676,8 @@ export default function App() {
       const proxima = new Date(wedAtual);
       proxima.setDate(wedAtual.getDate() + 7);
       const proximaISO = toISODate(proxima);
-      const idsRemanejar = new Set(itens.filter(r => r.status === 'aprovada' && r.quartaAlvo === wedAtualISO).map(r => r.id));
-      persistRequests(requests.map(r => (idsRemanejar.has(r.id) ? { ...r, quartaAlvo: proximaISO } : r)));
+      const idsRemanejar = itens.filter(r => r.status === 'aprovada' && r.quartaAlvo === wedAtualISO).map(r => r.id);
+      idsRemanejar.forEach(id => updateRequest(id, { quartaAlvo: proximaISO }));
       showToast('Lista encerrada — pendentes remanejados para a próxima semana');
     },
     remove: (id, descricao) => {
