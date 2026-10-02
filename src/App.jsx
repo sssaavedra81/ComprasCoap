@@ -56,7 +56,7 @@ const PRIORIDADE_CLASS = {
 
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
-const APP_VERSION = '1.5';
+const APP_VERSION = '1.7';
 const APP_DEVELOPER = 'Daniel Saavedra';
 
 /* ---------- utilitários ---------- */
@@ -86,6 +86,13 @@ function formatDateTimeBR(iso) {
   const mm = String(dt.getMinutes()).padStart(2, '0');
   return `${d}/${m}/${y} às ${hh}h${mm}`;
 }
+
+const LANCHE_MOMENTO_LABELS = {
+  antes: 'Antes do início',
+  inicio: 'No início',
+  intervalo: 'No intervalo',
+  final: 'No final',
+};
 
 function formatDateLongBR(input) {
   const d = typeof input === 'string' ? new Date(input + 'T00:00:00') : input;
@@ -745,6 +752,7 @@ function FormCompra({ onCancel, onSubmit, initial }) {
 function FormReuniao({ onCancel, onSubmit, initial }) {
   const [assunto, setAssunto] = useState(initial?.assunto || '');
   const [dataHorario, setDataHorario] = useState(initial?.dataHorario || '');
+  const [quandoServirLanche, setQuandoServirLanche] = useState(initial?.quandoServirLanche || '');
   const [participantes, setParticipantes] = useState(initial ? String(initial.participantes) : '');
   const [cardapioSugestao, setCardapioSugestao] = useState(initial?.cardapioSugestao || '');
   const [observacoesSolicitante, setObservacoesSolicitante] = useState(initial?.observacoesSolicitante || '');
@@ -753,7 +761,7 @@ function FormReuniao({ onCancel, onSubmit, initial }) {
     e.preventDefault();
     if (!assunto || !dataHorario || !participantes) return;
     onSubmit([{
-      tipo: 'reuniao', assunto, dataHorario, participantes: Number(participantes),
+      tipo: 'reuniao', assunto, dataHorario, quandoServirLanche, participantes: Number(participantes),
       cardapioSugestao, observacoesSolicitante,
     }]);
   }
@@ -769,8 +777,15 @@ function FormReuniao({ onCancel, onSubmit, initial }) {
           <input value={assunto} onChange={e => setAssunto(e.target.value)} required />
         </div>
         <div className="coap-field">
-          <label>Data e horário</label>
+          <label>Data e horário de início</label>
           <input type="datetime-local" value={dataHorario} onChange={e => setDataHorario(e.target.value)} required />
+        </div>
+        <div className="coap-field">
+          <label>Quando servir o lanche</label>
+          <select value={quandoServirLanche} onChange={e => setQuandoServirLanche(e.target.value)}>
+            <option value="">Selecione…</option>
+            {Object.entries(LANCHE_MOMENTO_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
         </div>
         <div className="coap-field">
           <label>Quantidade total de participantes (inclua equipe de apoio, como TI)</label>
@@ -834,6 +849,7 @@ function DetalhesModal({ request, onClose }) {
           ) : (
             <>
               <div><strong>Data e horário:</strong> {formatDateTimeBR(r.dataHorario)}</div>
+              <div><strong>Quando servir o lanche:</strong> {LANCHE_MOMENTO_LABELS[r.quandoServirLanche] || '—'}</div>
               <div><strong>Participantes:</strong> {r.participantes}</div>
               <div><strong>Cardápio sugerido:</strong> {r.cardapioSugestao || '—'}</div>
             </>
@@ -942,7 +958,7 @@ function RequesterView({ session, requests, config, onLogout, onRefresh, onAdd, 
                       <StatusBadge status={r.status} />
                     </div>
                   </div>
-                  <div className="coap-req-meta">{formatDateTimeBR(r.dataHorario)} · {r.participantes} participantes</div>
+                  <div className="coap-req-meta">{formatDateTimeBR(r.dataHorario)} · {r.participantes} participantes{r.quandoServirLanche && ` · lanche: ${LANCHE_MOMENTO_LABELS[r.quandoServirLanche]}`}</div>
                   {r.cardapioSugestao && <div className="coap-obs">Cardápio sugerido: {r.cardapioSugestao}</div>}
                   {r.observacaoAdmin && <div className="coap-obs">Observação da administração: {r.observacaoAdmin}</div>}
                   {r.status === 'pendente' && (
@@ -1046,7 +1062,7 @@ function PainelListaDeCompras({ titulo, subtitulo, itens, destaque, onPurchase }
 
 /* ---------- tabela de solicitações (admin / diretor) ---------- */
 
-function TabelaCompras({ items, somenteLeitura, onApprove, onReject, onPurchase, onDeliver, onDelete }) {
+function TabelaCompras({ items, somenteLeitura, onApprove, onReject, onPurchase, onDeliver, onDelete, onPostpone }) {
   const [rejeitando, setRejeitando] = useState(null);
   const [obs, setObs] = useState('');
   const [detalhando, setDetalhando] = useState(null);
@@ -1086,6 +1102,7 @@ function TabelaCompras({ items, somenteLeitura, onApprove, onReject, onPurchase,
                       </>}
                       {r.status === 'aprovada' && <button className="coap-mini-btn" onClick={() => onPurchase(r.id)}>Marcar comprado</button>}
                       {r.status === 'comprada' && <button className="coap-mini-btn" onClick={() => onDeliver(r.id)}>Marcar entregue</button>}
+                      {onPostpone && <button className="coap-mini-btn" onClick={() => onPostpone(r)}><Archive size={12} /> Adiar</button>}
                       <button className="coap-mini-btn reject" onClick={() => onDelete(r.id, `${r.material} (${r.solicitante})`)}><X size={12} /> Excluir</button>
                     </div>
                   </td>
@@ -1124,7 +1141,7 @@ function TabelaReunioes({ items, somenteLeitura, onApprove, onReject, onPurchase
         <thead>
           <tr>
             <th>Solicitante</th><th>Setor</th><th>Assunto</th><th>Data / horário</th>
-            <th>Participantes</th><th>Cardápio sugerido</th><th>Prazo</th><th>Situação</th><th></th>{!somenteLeitura && <th>Ações</th>}
+            <th>Participantes</th><th>Lanche</th><th>Cardápio sugerido</th><th>Prazo</th><th>Situação</th><th></th>{!somenteLeitura && <th>Ações</th>}
           </tr>
         </thead>
         <tbody>
@@ -1136,6 +1153,7 @@ function TabelaReunioes({ items, somenteLeitura, onApprove, onReject, onPurchase
                 <td data-label="Assunto">{r.assunto}</td>
                 <td data-label="Data / horário">{formatDateTimeBR(r.dataHorario)}</td>
                 <td data-label="Participantes">{r.participantes}</td>
+                <td data-label="Lanche">{LANCHE_MOMENTO_LABELS[r.quandoServirLanche] || '—'}</td>
                 <td data-label="Cardápio sugerido" style={{ maxWidth: 200 }}>{r.cardapioSugestao || '—'}</td>
                 <td data-label="Prazo"><EventoBadge dataHorario={r.dataHorario} /></td>
                 <td data-label="Situação"><StatusBadge status={r.status} /></td>
@@ -1158,7 +1176,7 @@ function TabelaReunioes({ items, somenteLeitura, onApprove, onReject, onPurchase
               </tr>
               {rejeitando === r.id && (
                 <tr>
-                  <td colSpan={10}>
+                  <td colSpan={11}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0' }}>
                       <input placeholder="Motivo da reprovação" value={obs} onChange={e => setObs(e.target.value)} style={{ flex: 1, padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} />
                       <button className="coap-mini-btn reject" onClick={() => { onReject(r.id, obs); setRejeitando(null); setObs(''); }}>Confirmar</button>
@@ -1336,7 +1354,7 @@ function ModoCompras({ itens, wedAtual, onTogglePurchased, onPostpone, onEncerra
                               <ExternalLink size={13} /> Abrir link de compra
                             </a>
                           )}
-                          {!somenteLeitura && r.status !== 'comprada' && onPostpone && (
+                          {!somenteLeitura && onPostpone && (
                             <button type="button" className="coap-mini-btn" onClick={e => { e.preventDefault(); e.stopPropagation(); onPostpone(r); }}>
                               <Archive size={12} /> Adiar para próxima lista
                             </button>
@@ -1470,7 +1488,8 @@ function PainelGestao({ session, requests, users, config, onLogout, onRefresh, a
         <>
           <Filtros filtros={filtros} setFiltros={setFiltros} setores={setores} solicitantes={solicitantes} mostrarStatus />
           <TabelaCompras items={comprasFiltradas} somenteLeitura={somenteLeitura}
-            onApprove={actions.approve} onReject={actions.reject} onPurchase={actions.purchase} onDeliver={actions.deliver} onDelete={actions.remove} />
+            onApprove={actions.approve} onReject={actions.reject} onPurchase={actions.purchase} onDeliver={actions.deliver} onDelete={actions.remove}
+            onPostpone={somenteLeitura ? null : r => actions.postponeItem(r.id, r.quartaAlvo)} />
         </>
       )}
 
@@ -1685,9 +1704,19 @@ export default function App() {
       deleteRequest(id);
     },
     encerrarCiclo: () => {
-      if (!window.confirm(`Isso arquiva o ciclo atual (nº ${config.cicloAtual}) — compras E reuniões — e inicia um novo ciclo. O histórico continua disponível para consulta. Confirmar?`)) return;
-      persistConfig({ ...config, cicloAtual: config.cicloAtual + 1, cicloInicioEm: todayISO() });
-      showToast('Novo ciclo iniciado');
+      const doCicloAtual = requests.filter(r => r.ciclo === config.cicloAtual);
+      const emAberto = doCicloAtual.filter(r => r.status !== 'entregue' && r.status !== 'reprovada');
+      const encerrados = doCicloAtual.length - emAberto.length;
+      if (!window.confirm(
+        `Isso encerra o ciclo atual (nº ${config.cicloAtual}) e inicia um novo.\n\n` +
+        `${encerrados} item(ns) entregue(s) ou reprovado(s) vão para o histórico.\n` +
+        `${emAberto.length} item(ns) ainda em aberto (pendente, aprovado ou comprado aguardando entrega) continuam ativos, agora no novo ciclo.\n\n` +
+        `Confirmar?`
+      )) return;
+      const novoCiclo = config.cicloAtual + 1;
+      emAberto.forEach(r => updateRequest(r.id, { ciclo: novoCiclo }));
+      persistConfig({ ...config, cicloAtual: novoCiclo, cicloInicioEm: todayISO() });
+      showToast('Ciclo encerrado — itens em aberto continuam ativos');
     },
     changeUserPin: (name, pin) => { persistUsers(users.map(u => (u.name === name ? { ...u, pin } : u))); showToast('PIN atualizado'); },
     changeUserSetor: (name, setor) => { persistUsers(users.map(u => (u.name === name ? { ...u, setor } : u))); showToast('Setor atualizado'); },
